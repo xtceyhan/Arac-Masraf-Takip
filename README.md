@@ -22,3 +22,9 @@ npm run build     # paketlenmiş uygulama üret (mac: .dmg, win: .exe)
 ## Android
 
 `bakim-takip-mobile/` altında Capacitor ile paketlenmiş, kendi yerel (IndexedDB) verisini tutan bağımsız bir uygulama.
+
+## Geliştirici
+
+**Tuğrul Ceyhan** ([@xtceyhan](https://github.com/xtceyhan))
+
+Bu projenin tüm hakları saklıdır. Kod izin alınmadan kopyalanamaz, dağıtılamaz veya kullanılamaz — bkz. [LICENSE](LICENSE).
