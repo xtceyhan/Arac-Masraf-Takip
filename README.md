@@ -1,22 +1,24 @@
 # Arac-Masraf-Takip
-Araç bakım masraf takip uygulaması
 
-Program Temel Prensibi: 
-Kendi araçlarımın bakım masrafı, ne zaman hangi parça değişti onun takibini yapmak amacıyla basit bir uygulama hazırlanmıştır. Uygulamaya ek olarak kullanıcı adı ve şifre kaydetme özelliği ile birden çok kullanıcının kullanması hedeflenmiştir.
+Araç bakım masraf takip uygulaması.
 
-Programın 2 aşaması bulunmaktadır. Öncelikle server tarafındaki dosyaların ayağa kaldırılması gerekmektedir. Bunun için npm kullanılır. 
+## Program Temel Prensibi
 
-npm install -g pm2
-npm install -g pm2-windows-startup
+Kendi araçlarımın bakım/masraf takibini yapmak amacıyla hazırlanmış kişisel bir uygulama. Hangi parça ne zaman değişti, bir sonraki bakım hangi km'de, yakıt/sigorta/muayene masrafları ne durumda — hepsi tek ekrandan izlenebiliyor.
+
+Masaüstü (Electron) ve Android sürümleri birbirinden **bağımsız** çalışır; veri paylaşımı yoktur, her biri kendi cihazında yerel olarak veri tutar.
+
+## Masaüstü (Electron)
+
+Tek parça bir Electron uygulaması — ayrı bir sunucu kurulumuna gerek yok. Veriler bilgisayarındaki uygulama veri klasöründe (`data.json`) tutulur.
+
+```bash
+cd bakim_takip
 npm install
-pm2 start server.js --name "bakim-takip"
-pm2-startup install
-pm2 save
+npm start        # geliştirme modunda çalıştır
+npm run build     # paketlenmiş uygulama üret (mac: .dmg, win: .exe)
+```
 
+## Android
 
-Sonrasında programı kullanacağın bilgisayarda dosyaları masaüstüne indirip cd ile dosya içerisine powershell ile gir 
-npm install 
-npm run build 
-
-
-
+`bakim-takip-mobile/` altında Capacitor ile paketlenmiş, kendi yerel (IndexedDB) verisini tutan bağımsız bir uygulama.

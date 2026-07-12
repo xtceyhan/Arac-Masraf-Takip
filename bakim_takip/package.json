@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder --config.directories.output=$HOME/dist-bakim-takip"
   },
   "devDependencies": {
     "electron": "^42.0.1",
@@ -15,7 +15,9 @@
   "build": {
     "appId": "com.bakim.takip",
     "productName": "Bakım Takip",
-    "win": { "target": "nsis" },
+    "icon": "build/icon",
+    "mac": { "target": ["dmg"], "category": "public.app-category.utilities", "icon": "build/icon.icns" },
+    "win": { "target": "nsis", "icon": "build/icon.ico" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   }
 }
