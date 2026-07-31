@@ -5,6 +5,32 @@ const DUE_TYPES=[{id:'sigorta',label:'Sigorta'},{id:'muayene',label:'Muayene'}];
 
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
+function carIcon(size){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" fill="currentColor"><path d="M228 620 C228 590 250 566 284 560 L300 494 C312 452 350 424 396 424 L628 424 C674 424 712 452 724 494 L740 560 C774 566 796 590 796 620 L796 668 C796 690 778 708 756 708 L268 708 C246 708 228 690 228 668 Z"/><circle cx="352" cy="716" r="60"/><circle cx="672" cy="716" r="60"/></svg>`;
+}
+
+function getEffectiveTheme(){
+  const explicit=document.documentElement.getAttribute('data-theme');
+  if(explicit)return explicit;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+}
+function initTheme(){
+  const saved=localStorage.getItem('theme');
+  if(saved==='dark'||saved==='light')document.documentElement.setAttribute('data-theme',saved);
+}
+function themeBtnLabel(){
+  return getEffectiveTheme()==='dark'?'🌙 Koyu Mod':'☀️ Açık Mod';
+}
+function toggleTheme(){
+  const next=getEffectiveTheme()==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  localStorage.setItem('theme',next);
+  const btn=document.getElementById('theme-btn');
+  if(btn)btn.textContent=themeBtnLabel();
+}
+
+initTheme();
+
 let state={vehicles:[],selId:null,view:'dashboard'};
 
 const API={
@@ -54,10 +80,11 @@ function renderLayout(view){
   document.getElementById('app').innerHTML=`<div class="layout">
     <div class="sb">
       <div class="sb-top">
-        <div class="sb-logo"><svg width="26" height="26" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#185FA5"/><path d="M8 28L20 14l12 14" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="22" r="3" fill="#fff"/></svg><span>Bakım Takip</span></div>
+        <div class="sb-logo"><div style="width:30px;height:30px;background:var(--blue);color:#fff;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${carIcon(18)}</div><span>Bakım Takip</span></div>
         ${state.vehicles.length?`<div class="v-sel-wrap"><select class="v-sel" onchange="changeVehicle(this.value)">${opts}</select></div>`:''}
       </div>
       <nav>${nav.map(n=>`<div class="nav-item ${view===n.id?'active':''}" onclick="navigate('${n.id}')"><span class="ni">${n.icon}</span><span>${n.label}</span></div>`).join('')}</nav>
+      <div class="sb-bottom"><button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">${themeBtnLabel()}</button></div>
     </div>
     <div class="main" id="main"></div>
   </div>`;
@@ -110,7 +137,7 @@ async function renderDashboard(el){
     const byCost={};logs.forEach(l=>l.parts.forEach(p=>{byCost[p.name]=(byCost[p.name]||0)+(p.cost||0);}));
     const top=Object.entries(byCost).sort((a,b)=>b[1]-a[1]).slice(0,5);const maxC=top[0]?.[1]||1;
     el.innerHTML=`<div class="vc">
-      <div class="vh-card"><div class="vh-icon">🚗</div><div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div><div class="vh-km"><span class="km-v">${v.current_km.toLocaleString('tr-TR')}</span><span class="km-l">km</span></div></div>
+      <div class="vh-card"><div class="vh-icon" style="background:#fff;color:var(--blue)">${carIcon(30)}</div><div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div><div class="vh-km"><span class="km-v">${v.current_km.toLocaleString('tr-TR')}</span><span class="km-l">km</span></div></div>
       <div class="slabel">Parça Durumları</div>
       <div class="pgrid">${cards}${dueCards}</div>
       <div class="bgrid">
@@ -319,7 +346,7 @@ let editingVehicleId=null;
 
 async function renderVehicles(el){
   await loadVehicles();
-  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle(${v.id});navigate('dashboard')"><div class="vci-icon">🚗</div><div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle(${v.id})">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle(${v.id})">Sil</button></div>`).join('');
+  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle(${v.id});navigate('dashboard')"><div class="vci-icon">${carIcon(24)}</div><div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle(${v.id})">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle(${v.id})">Sil</button></div>`).join('');
   el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Araçlar</h2><button class="btn" onclick="showAddVehicle()">+ Araç Ekle</button></div><div class="vlist">${cards}</div>
     <div id="add-v-form" class="fcard hidden"><h3 id="v-form-title">Yeni Araç</h3>
       <div class="frow"><div class="fg"><label>Marka *</label><input id="v-brand" placeholder="Volvo"></div><div class="fg"><label>Model *</label><input id="v-model" placeholder="S60"></div></div>

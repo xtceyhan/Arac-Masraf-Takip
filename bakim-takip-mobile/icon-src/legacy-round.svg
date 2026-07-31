@@ -1,12 +1,14 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="512" cy="512" r="512" fill="#185FA5"/>
-  <g transform="matrix(0.85,0,0,0.85,76.8,-2.25)">
-    <rect x="200" y="560" width="624" height="160" rx="40" fill="#ffffff"/>
-    <path d="M300 560 C300 460 380 400 480 400 L560 400 C650 400 720 460 740 560 Z" fill="#ffffff"/>
-    <rect x="420" y="440" width="200" height="100" rx="16" fill="#185FA5"/>
-    <circle cx="330" cy="730" r="80" fill="#ffffff"/>
-    <circle cx="330" cy="730" r="34" fill="#185FA5"/>
-    <circle cx="694" cy="730" r="80" fill="#ffffff"/>
-    <circle cx="694" cy="730" r="34" fill="#185FA5"/>
+  <circle cx="512" cy="512" r="512" fill="#3D63DD"/>
+  <g transform="translate(0,-40)">
+    <ellipse cx="512" cy="742" rx="260" ry="34" fill="#2947B0" opacity="0.35"/>
+    <path d="M228 620 C228 590 250 566 284 560 L300 494 C312 452 350 424 396 424 L628 424 C674 424 712 452 724 494 L740 560 C774 566 796 590 796 620 L796 668 C796 690 778 708 756 708 L268 708 C246 708 228 690 228 668 Z" fill="#ffffff"/>
+    <path d="M352 560 L378 494 C384 478 400 466 418 466 L606 466 C624 466 640 478 646 494 L672 560 Z" fill="#3D63DD"/>
+    <line x1="512" y1="466" x2="512" y2="560" stroke="#ffffff" stroke-width="10"/>
+    <circle cx="352" cy="716" r="72" fill="#1A1D23"/>
+    <circle cx="352" cy="716" r="30" fill="#ffffff"/>
+    <circle cx="672" cy="716" r="72" fill="#1A1D23"/>
+    <circle cx="672" cy="716" r="30" fill="#ffffff"/>
+    <circle cx="270" cy="600" r="14" fill="#FFD75E"/>
   </g>
 </svg>
