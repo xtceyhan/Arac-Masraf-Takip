@@ -19,6 +19,57 @@ function save(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
+function isPlainObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
+function str(x, max) { return String(x ?? '').slice(0, max); }
+
+function sanitizeVehicle(v) {
+  if (!isPlainObj(v)) return null;
+  return {
+    id: v.id,
+    brand: str(v.brand, 200),
+    model: str(v.model, 200),
+    year: v.year != null ? str(v.year, 20) : null,
+    engine: v.engine != null ? str(v.engine, 200) : null,
+    purchase_km: Number(v.purchase_km) || 0,
+    current_km: Number(v.current_km) || 0,
+    created_at: typeof v.created_at === 'string' ? v.created_at : new Date().toISOString(),
+  };
+}
+
+function sanitizePart(p) {
+  if (!isPlainObj(p)) return null;
+  return { key: str(p.key, 100), name: str(p.name, 200), brand: str(p.brand, 200), cost: Number(p.cost) || 0 };
+}
+
+function sanitizeLog(l) {
+  if (!isPlainObj(l) || !Array.isArray(l.parts)) return null;
+  return {
+    id: l.id,
+    vehicle_id: l.vehicle_id,
+    km: Number(l.km) || 0,
+    date: str(l.date, 40),
+    parts: l.parts.map(sanitizePart).filter(Boolean),
+    notes: str(l.notes, 2000),
+    total_cost: Number(l.total_cost) || 0,
+    created_at: typeof l.created_at === 'string' ? l.created_at : new Date().toISOString(),
+  };
+}
+
+function sanitizeExpense(e) {
+  if (!isPlainObj(e)) return null;
+  return {
+    id: e.id,
+    vehicle_id: e.vehicle_id,
+    type: str(e.type, 40),
+    date: str(e.date, 40),
+    amount: Number(e.amount) || 0,
+    km: e.km != null ? Number(e.km) : null,
+    due_date: e.due_date != null ? str(e.due_date, 40) : null,
+    notes: str(e.notes, 2000),
+    created_at: typeof e.created_at === 'string' ? e.created_at : new Date().toISOString(),
+  };
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1150, height: 720,
@@ -181,7 +232,16 @@ ipcMain.handle('backup:import', async () => {
   if (!Array.isArray(data.vehicles) || !Array.isArray(data.logs)) {
     throw new Error('Geçersiz yedek dosyası');
   }
-  save(data);
+  const vehicles = data.vehicles.map(sanitizeVehicle).filter(Boolean);
+  const logs = data.logs.map(sanitizeLog).filter(Boolean);
+  const expenses = (data.expenses || []).map(sanitizeExpense).filter(Boolean);
+  const maxId = (arr) => arr.reduce((m, x) => Math.max(m, Number(x.id) || 0), 0);
+  save({
+    vehicles, logs, expenses,
+    nextVehicleId: maxId(vehicles) + 1,
+    nextLogId: maxId(logs) + 1,
+    nextExpenseId: maxId(expenses) + 1,
+  });
   return { success: true };
 });
 
