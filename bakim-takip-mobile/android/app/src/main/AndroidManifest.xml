@@ -35,5 +35,7 @@
         </provider>
     </application>
 
-    <!-- Uygulama tamamen çevrimdışı çalışır (yerel IndexedDB); ağ izni kasıtlı olarak eklenmedi. -->
+    <!-- Sadece kullanıcının Ayarlar'dan kendi isteğiyle girdiği marka logosu CDN'inden
+         resim yüklemek için gerekli; başka hiçbir ağ isteği yapılmaz. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

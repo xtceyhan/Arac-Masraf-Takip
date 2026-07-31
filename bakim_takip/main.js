@@ -21,6 +21,7 @@ function save(data) {
 
 function isPlainObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
 function str(x, max) { return String(x ?? '').slice(0, max); }
+function photoStr(x) { return (typeof x === 'string' && x.startsWith('data:image/') && x.length <= 700000) ? x : null; }
 
 function sanitizeVehicle(v) {
   if (!isPlainObj(v)) return null;
@@ -32,6 +33,7 @@ function sanitizeVehicle(v) {
     engine: v.engine != null ? str(v.engine, 200) : null,
     purchase_km: Number(v.purchase_km) || 0,
     current_km: Number(v.current_km) || 0,
+    photo: photoStr(v.photo),
     created_at: typeof v.created_at === 'string' ? v.created_at : new Date().toISOString(),
   };
 }
@@ -107,6 +109,7 @@ ipcMain.handle('vehicles:create', (e, body) => {
     engine: body.engine || null,
     purchase_km: body.purchase_km || 0,
     current_km: body.current_km || 0,
+    photo: photoStr(body.photo),
     created_at: new Date().toISOString(),
   };
   db.vehicles.push(vehicle);

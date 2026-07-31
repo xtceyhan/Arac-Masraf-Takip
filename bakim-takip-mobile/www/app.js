@@ -11,6 +11,24 @@ function carIcon(size){
   return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" fill="currentColor"><path d="M228 620 C228 590 250 566 284 560 L300 494 C312 452 350 424 396 424 L628 424 C674 424 712 452 724 494 L740 560 C774 566 796 590 796 620 L796 668 C796 690 778 708 756 708 L268 708 C246 708 228 690 228 668 Z"/><circle cx="352" cy="716" r="60"/><circle cx="672" cy="716" r="60"/></svg>`;
 }
 
+function brandLogoUrl(brand){
+  const tpl=localStorage.getItem('logoCdnTemplate');
+  if(!tpl||!brand)return null;
+  const slug=String(brand).trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  if(!slug)return null;
+  return tpl.replace('{marka}',slug).replace('{brand}',slug);
+}
+function handleLogoError(imgEl,size){
+  imgEl.outerHTML=carIcon(size);
+}
+function updateBrandLogoPreview(){
+  const el=document.getElementById('v-brand-logo');
+  if(!el)return;
+  const brand=document.getElementById('v-brand')?.value||'';
+  const url=brandLogoUrl(brand);
+  el.innerHTML=url?`<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:contain" onerror="this.parentElement.innerHTML=''">`:'';
+}
+
 function getEffectiveTheme(){
   const explicit=document.documentElement.getAttribute('data-theme');
   if(explicit)return explicit;
@@ -139,8 +157,11 @@ async function renderDashboard(el){
     const total=logs.reduce((s,l)=>s+(l.total_cost||0),0);
     const byCost={};logs.forEach(l=>l.parts.forEach(p=>{byCost[p.name]=(byCost[p.name]||0)+(p.cost||0);}));
     const top=Object.entries(byCost).sort((a,b)=>b[1]-a[1]).slice(0,5);const maxC=top[0]?.[1]||1;
+    const heroStyle=v.photo?`background-image:linear-gradient(135deg,rgba(30,50,120,.55),rgba(20,30,70,.75)),url('${esc(v.photo)}');background-size:cover;background-position:center`:'';
+    const heroLogoUrl=brandLogoUrl(v.brand);
+    const heroIconHtml=heroLogoUrl?`<img src="${esc(heroLogoUrl)}" alt="" style="width:34px;height:34px;object-fit:contain" onerror="handleLogoError(this,30)">`:carIcon(30);
     el.innerHTML=`<div class="vc">
-      <div class="vh-card"><div class="vh-icon" style="background:#fff;color:var(--blue)">${carIcon(30)}</div><div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div><div class="vh-km"><span class="km-v">${v.current_km.toLocaleString('tr-TR')}</span><span class="km-l">km</span></div></div>
+      <div class="vh-card" style="${heroStyle}"><div class="vh-icon" style="background:#fff;color:var(--blue)">${heroIconHtml}</div><div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div><div class="vh-km"><span class="km-v">${v.current_km.toLocaleString('tr-TR')}</span><span class="km-l">km</span></div></div>
       <div class="slabel">Parça Durumları</div>
       <div class="pgrid">${cards}${dueCards}</div>
       <div class="bgrid">
@@ -469,22 +490,82 @@ let editingVehicleId=null;
 
 async function renderVehicles(el){
   await loadVehicles();
-  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle(${v.id});navigate('dashboard')"><div class="vci-icon">${carIcon(24)}</div><div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle(${v.id})">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle(${v.id})">Sil</button></div>`).join('');
+  const cards=state.vehicles.map(v=>{
+    const logoUrl=brandLogoUrl(v.brand);
+    const iconHtml=v.photo?`<img src="${esc(v.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`:logoUrl?`<img src="${esc(logoUrl)}" alt="" style="width:26px;height:26px;object-fit:contain" onerror="handleLogoError(this,24)">`:carIcon(24);
+    return `<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle(${v.id});navigate('dashboard')"><div class="vci-icon">${iconHtml}</div><div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle(${v.id})">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle(${v.id})">Sil</button></div>`;
+  }).join('');
   el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Araçlar</h2><button class="btn" onclick="showAddVehicle()">+ Araç Ekle</button></div><div class="vlist">${cards}</div>
     <div id="add-v-form" class="fcard hidden"><h3 id="v-form-title">Yeni Araç</h3>
-      <div class="frow"><div class="fg"><label>Marka *</label><input id="v-brand" placeholder="Volvo"></div><div class="fg"><label>Model *</label><input id="v-model" placeholder="S60"></div></div>
+      <div class="frow"><div class="fg"><label>Marka *</label><div style="display:flex;gap:8px;align-items:center"><input id="v-brand" placeholder="Volvo" oninput="updateBrandLogoPreview()" style="flex:1"><div id="v-brand-logo" style="width:36px;height:36px;border-radius:8px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0"></div></div></div><div class="fg"><label>Model *</label><input id="v-model" placeholder="S60"></div></div>
       <div class="frow"><div class="fg"><label>Yıl</label><input id="v-year" type="number" placeholder="2011"></div><div class="fg"><label>Motor</label><input id="v-engine" placeholder="1.6 T4"></div></div>
       <div class="frow"><div class="fg"><label>Alındığı KM</label><input id="v-pkm" type="number" placeholder="0"></div><div class="fg"><label>Güncel KM</label><input id="v-ckm" type="number" placeholder="0"></div></div>
+      <div class="fg"><label>Araç Fotoğrafı</label>
+        <div id="v-photo-preview" class="photo-preview"><span>Fotoğraf yok</span></div>
+        <div class="facts" style="justify-content:flex-start">
+          <input type="file" id="v-photo-input" accept="image/*" onchange="handlePhotoSelect(event)">
+          <button type="button" class="btn-s" onclick="removePhoto()">Kaldır</button>
+        </div>
+      </div>
       <div id="v-err" class="err-msg hidden"></div>
       <div class="facts"><button class="btn-s" onclick="hideVehicleForm()">İptal</button><button class="btn" onclick="saveVehicleForm()">Kaydet</button></div>
     </div>
   </div>`;
 }
 
+let pendingPhoto=null;
+
+function renderPhotoPreview(){
+  const el=document.getElementById('v-photo-preview');
+  if(!el)return;
+  el.innerHTML=pendingPhoto?`<img src="${pendingPhoto}" alt="">`:'<span>Fotoğraf yok</span>';
+}
+
+function resizeImageFile(file,maxDim,quality){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        let{width,height}=img;
+        if(width>height){if(width>maxDim){height=Math.round(height*maxDim/width);width=maxDim;}}
+        else{if(height>maxDim){width=Math.round(width*maxDim/height);height=maxDim;}}
+        const canvas=document.createElement('canvas');
+        canvas.width=width;canvas.height=height;
+        canvas.getContext('2d').drawImage(img,0,0,width,height);
+        resolve(canvas.toDataURL('image/jpeg',quality));
+      };
+      img.onerror=()=>reject(new Error('Görsel okunamadı'));
+      img.src=reader.result;
+    };
+    reader.onerror=()=>reject(new Error('Dosya okunamadı'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhotoSelect(ev){
+  const file=ev.target.files[0];
+  if(!file)return;
+  try{
+    pendingPhoto=await resizeImageFile(file,960,0.82);
+    renderPhotoPreview();
+  }catch(e){alert('Fotoğraf yüklenemedi: '+e.message);}
+}
+
+function removePhoto(){
+  pendingPhoto=null;
+  const input=document.getElementById('v-photo-input');
+  if(input)input.value='';
+  renderPhotoPreview();
+}
+
 function showAddVehicle(){
   editingVehicleId=null;
+  pendingPhoto=null;
   document.getElementById('v-form-title').textContent='Yeni Araç';
-  ['v-brand','v-model','v-year','v-engine','v-pkm','v-ckm'].forEach(id=>document.getElementById(id).value='');
+  ['v-brand','v-model','v-year','v-engine','v-pkm','v-ckm','v-photo-input'].forEach(id=>document.getElementById(id).value='');
+  renderPhotoPreview();
+  updateBrandLogoPreview();
   document.getElementById('add-v-form').classList.remove('hidden');
 }
 
@@ -492,6 +573,7 @@ function showEditVehicle(id){
   const v=state.vehicles.find(x=>x.id===id);
   if(!v)return;
   editingVehicleId=id;
+  pendingPhoto=v.photo||null;
   document.getElementById('v-form-title').textContent='Aracı Düzenle';
   document.getElementById('v-brand').value=v.brand;
   document.getElementById('v-model').value=v.model;
@@ -499,6 +581,9 @@ function showEditVehicle(id){
   document.getElementById('v-engine').value=v.engine||'';
   document.getElementById('v-pkm').value=v.purchase_km||0;
   document.getElementById('v-ckm').value=v.current_km||0;
+  document.getElementById('v-photo-input').value='';
+  renderPhotoPreview();
+  updateBrandLogoPreview();
   document.getElementById('add-v-form').classList.remove('hidden');
 }
 
@@ -512,7 +597,7 @@ async function saveVehicleForm(){
   const model=document.getElementById('v-model').value.trim();
   const errEl=document.getElementById('v-err');
   if(!brand||!model){errEl.textContent='Marka ve model zorunlu.';errEl.classList.remove('hidden');return;}
-  const body={brand,model,year:document.getElementById('v-year').value||null,engine:document.getElementById('v-engine').value||null,purchase_km:parseInt(document.getElementById('v-pkm').value)||0,current_km:parseInt(document.getElementById('v-ckm').value)||0};
+  const body={brand,model,year:document.getElementById('v-year').value||null,engine:document.getElementById('v-engine').value||null,purchase_km:parseInt(document.getElementById('v-pkm').value)||0,current_km:parseInt(document.getElementById('v-ckm').value)||0,photo:pendingPhoto};
   try{
     if(editingVehicleId){
       await API.put('/vehicles/'+editingVehicleId,body);
@@ -540,7 +625,20 @@ function renderSettings(el){
       <button class="btn-s" onclick="importBackup()">Yedekten Geri Yükle</button>
       <button class="btn" onclick="exportBackup()">Yedek Al</button>
     </div>
+  </div>
+  <div class="fcard"><h3>Marka Logosu (CDN)</h3>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Kendi resim sunucun (CDN) varsa, araç markası yazıldığında logosunu otomatik göstermek için adres şablonunu buraya yapıştır. <code>{marka}</code> yerine marka adı otomatik geçer (küçük harfe çevrilip boşluklar tire yapılır). Örnek: <code>https://ornek-cdn.com/logos/{marka}.png</code>. Boş bırakırsan araba ikonu kullanılır. Bu özellik internet gerektirir.</p>
+    <div class="fg"><input id="logo-cdn-input" placeholder="https://ornek-cdn.com/logos/{marka}.png" value="${esc(localStorage.getItem('logoCdnTemplate')||'')}"></div>
+    <div id="logo-msg" class="ok-msg hidden"></div>
+    <div class="facts" style="justify-content:flex-start"><button class="btn" onclick="saveLogoCdn()">Kaydet</button></div>
   </div></div>`;
+}
+
+function saveLogoCdn(){
+  const val=document.getElementById('logo-cdn-input').value.trim();
+  if(val)localStorage.setItem('logoCdnTemplate',val);else localStorage.removeItem('logoCdnTemplate');
+  const el=document.getElementById('logo-msg');
+  el.textContent='Kaydedildi.';el.classList.remove('hidden');
 }
 
 function showBackupMsg(text){
