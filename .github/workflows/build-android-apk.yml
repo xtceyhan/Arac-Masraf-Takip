@@ -1,0 +1,64 @@
+name: Android APK Derle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bakim-takip-mobile/**"
+      - ".github/workflows/build-android-apk.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bakim-takip-mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: bakim-takip-mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/bakim-takip.apk
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bakim-takip-apk
+          path: bakim-takip-mobile/android/app/build/outputs/apk/debug/bakim-takip.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-apk
+          name: "Bakım Takip - Android APK (en güncel)"
+          body: |
+            Otomatik olarak derlenen en güncel Android APK dosyası.
+            Tablete/telefona indirip kurabilirsin (bilinmeyen kaynaklardan yükleme izni gerekebilir).
+          make_latest: true
+          files: bakim-takip-mobile/android/app/build/outputs/apk/debug/bakim-takip.apk
