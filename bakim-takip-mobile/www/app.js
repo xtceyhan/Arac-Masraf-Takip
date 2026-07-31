@@ -2,6 +2,8 @@ const PARTS=[{key:'motor_yagi',name:'Motor Yağı',km:7000},{key:'yag_filtresi',
 
 const EXPENSE_TYPES=[{id:'bakim',label:'Bakım'},{id:'yakit',label:'Yakıt'},{id:'sigorta',label:'Sigorta'},{id:'muayene',label:'Muayene'}];
 const DUE_TYPES=[{id:'sigorta',label:'Sigorta'},{id:'muayene',label:'Muayene'}];
+const TYPE_COLORS={'Bakım':'#185FA5','Yakıt':'#EF9F27','Sigorta':'#8B5CF6','Muayene':'#0EA5A5'};
+const CHART_BLUE='#185FA5';
 
 let state={vehicles:[],selId:null,view:'dashboard'};
 
@@ -262,6 +264,24 @@ async function delLog(id){
   await API.del('/maintenance/log/'+id);navigate('history');
 }
 
+function computeExpenseStats(logs,expenses){
+  const logsTotal=logs.reduce((s,l)=>s+(l.total_cost||0),0);
+  const expTotal=expenses.reduce((s,e)=>s+(e.amount||0),0);
+  const total=logsTotal+expTotal;
+  const byYear={},byPart={},byType={};
+  logs.forEach(l=>{const y=l.date?.substring(0,4)||'?';byYear[y]=(byYear[y]||0)+(l.total_cost||0);l.parts.forEach(p=>{byPart[p.name]=(byPart[p.name]||0)+(p.cost||0);});});
+  byType['Bakım']=logsTotal;
+  expenses.forEach(e=>{
+    const y=e.date?.substring(0,4)||'?';byYear[y]=(byYear[y]||0)+(e.amount||0);
+    const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
+    byType[label]=(byType[label]||0)+(e.amount||0);
+  });
+  const ys=Object.entries(byYear).sort((a,b)=>b[0]-a[0]);
+  const ps=Object.entries(byPart).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const ts=Object.entries(byType).filter(([,c])=>c>0).sort((a,b)=>b[1]-a[1]);
+  return{logsTotal,expTotal,total,ys,ps,ts};
+}
+
 async function renderExpenses(el){
   const v=selVehicle();
   if(!v){el.innerHTML=`<div class="vc"><div class="empty">Araç seçin.</div></div>`;return;}
@@ -269,35 +289,133 @@ async function renderExpenses(el){
   try{
     const logs=await API.get('/maintenance/'+v.id);
     const expenses=await window.api.expenses.list(v.id);
-    const logsTotal=logs.reduce((s,l)=>s+(l.total_cost||0),0);
-    const expTotal=expenses.reduce((s,e)=>s+(e.amount||0),0);
-    const total=logsTotal+expTotal;
-    const byYear={},byPart={},byType={};
-    logs.forEach(l=>{const y=l.date?.substring(0,4)||'?';byYear[y]=(byYear[y]||0)+(l.total_cost||0);l.parts.forEach(p=>{byPart[p.name]=(byPart[p.name]||0)+(p.cost||0);});});
-    byType['Bakım']=logsTotal;
-    expenses.forEach(e=>{
-      const y=e.date?.substring(0,4)||'?';byYear[y]=(byYear[y]||0)+(e.amount||0);
-      const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
-      byType[label]=(byType[label]||0)+(e.amount||0);
-    });
-    const ys=Object.entries(byYear).sort((a,b)=>b[0]-a[0]);
-    const ps=Object.entries(byPart).sort((a,b)=>b[1]-a[1]).slice(0,6);const maxP=ps[0]?.[1]||1;
-    const ts=Object.entries(byType).filter(([,c])=>c>0).sort((a,b)=>b[1]-a[1]);const maxT=ts[0]?.[1]||1;
+    const{logsTotal,total,ys,ps,ts}=computeExpenseStats(logs,expenses);
+    const maxP=ps[0]?.[1]||1;const maxT=ts[0]?.[1]||1;
     const recentExp=expenses.map(e=>{
       const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
       return `<div class="lcard"><div class="lhead"><div><span class="lkm">${label}</span><span class="ldate">${e.date}</span></div><div><span class="lcost">${e.amount.toLocaleString('tr-TR')} ₺</span><button class="btn-s" onclick="editExpense(${e.id})">Düzenle</button><button class="btn-d" onclick="delExpense(${e.id})">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${e.due_date}</span></div>`:''}${e.notes?`<div class="lnotes">${e.notes}</div>`:''}</div>`;
     }).join('')||'<div class="empty">Kayıt yok.</div>';
-    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Masraf Analizi</h2><button class="btn" onclick='navigate("add",{type:"yakit"})'>+ Masraf Ekle</button></div>
+    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Masraf Analizi</h2><div style="display:flex;gap:8px"><button class="btn-s" id="pdf-btn" onclick="generateReport()">📄 PDF Rapor</button><button class="btn" onclick='navigate("add",{type:"yakit"})'>+ Masraf Ekle</button></div></div>
       <div class="scards"><div class="scard"><div class="scard-l">Toplam</div><div class="scard-v">${total.toLocaleString('tr-TR')} ₺</div></div><div class="scard"><div class="scard-l">Bakım Sayısı</div><div class="scard-v">${logs.length}</div></div><div class="scard"><div class="scard-l">Ort / Bakım</div><div class="scard-v">${logs.length?Math.round(logsTotal/logs.length).toLocaleString('tr-TR'):0} ₺</div></div></div>
       <div class="two">
-        <div class="card"><div class="ctitle">Yıla Göre</div><div class="ebars">${ys.map(([y,c])=>`<div class="erow"><span class="ename">${y}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/(total||1))*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
-        <div class="card"><div class="ctitle">Parçaya Göre</div><div class="ebars">${ps.map(([n,c])=>`<div class="erow"><span class="ename">${n}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxP)*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
+        <div class="card"><div class="ctitle">Yıla Göre</div><div class="chart-wrap"><canvas id="chart-year"></canvas></div><div class="ebars">${ys.map(([y,c])=>`<div class="erow"><span class="ename">${y}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/(total||1))*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
+        <div class="card"><div class="ctitle">Parçaya Göre</div><div class="chart-wrap"><canvas id="chart-part"></canvas></div><div class="ebars">${ps.map(([n,c])=>`<div class="erow"><span class="ename">${n}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxP)*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
       </div>
-      <div class="card" style="margin-top:12px"><div class="ctitle">Türe Göre</div><div class="ebars">${ts.map(([n,c])=>`<div class="erow"><span class="ename">${n}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxT)*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')}</div></div>
+      <div class="card" style="margin-top:12px"><div class="ctitle">Türe Göre</div><div class="chart-wrap donut"><canvas id="chart-type"></canvas></div><div class="ebars">${ts.map(([n,c])=>`<div class="erow"><span class="ename">${n}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxT)*100)}%;background:${TYPE_COLORS[n]||CHART_BLUE}"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')}</div></div>
       <div class="slabel" style="margin-top:20px">Yakıt / Sigorta / Muayene Kayıtları</div>
       <div class="llist">${recentExp}</div>
     </div>`;
+    renderExpenseCharts(ys,ps,ts);
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${e.message}</div></div>`;}
+}
+
+function renderExpenseCharts(ys,ps,ts){
+  const yearsAsc=[...ys].sort((a,b)=>a[0].localeCompare(b[0]));
+  Chart.getChart('chart-year')?.destroy();
+  new Chart(document.getElementById('chart-year'),{type:'bar',
+    data:{labels:yearsAsc.map(([y])=>y),datasets:[{data:yearsAsc.map(([,c])=>c),backgroundColor:CHART_BLUE,borderRadius:4,maxBarThickness:36}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString('tr-TR')+' ₺'}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString('tr-TR')}},x:{grid:{display:false}}}}});
+  Chart.getChart('chart-part')?.destroy();
+  new Chart(document.getElementById('chart-part'),{type:'bar',
+    data:{labels:ps.map(([n])=>n),datasets:[{data:ps.map(([,c])=>c),backgroundColor:CHART_BLUE,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.x.toLocaleString('tr-TR')+' ₺'}}},scales:{x:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString('tr-TR')}},y:{grid:{display:false}}}}});
+  Chart.getChart('chart-type')?.destroy();
+  new Chart(document.getElementById('chart-type'),{type:'doughnut',
+    data:{labels:ts.map(([n])=>n),datasets:[{data:ts.map(([,c])=>c),backgroundColor:ts.map(([n])=>TYPE_COLORS[n]||'#9CA3AF'),borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:11}}},tooltip:{callbacks:{label:c=>c.label+': '+c.parsed.toLocaleString('tr-TR')+' ₺'}}}}});
+}
+
+async function chartToImage(config,w,h){
+  const canvas=document.createElement('canvas');
+  canvas.width=w;canvas.height=h;
+  const chart=new Chart(canvas,{...config,options:{...config.options,responsive:false,maintainAspectRatio:false,animation:false}});
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const img=canvas.toDataURL('image/png');
+  chart.destroy();
+  return img;
+}
+
+async function generateReport(){
+  const v=selVehicle();
+  if(!v)return;
+  const btn=document.getElementById('pdf-btn');
+  const prevLabel=btn.textContent;
+  btn.textContent='Oluşturuluyor...';btn.disabled=true;
+  try{
+    const logs=await API.get('/maintenance/'+v.id);
+    const expenses=await window.api.expenses.list(v.id);
+    const{logsTotal,total,ys,ps,ts}=computeExpenseStats(logs,expenses);
+    const yearsAsc=[...ys].sort((a,b)=>a[0].localeCompare(b[0]));
+    const typeImg=await chartToImage({type:'doughnut',data:{labels:ts.map(([n])=>n),datasets:[{data:ts.map(([,c])=>c),backgroundColor:ts.map(([n])=>TYPE_COLORS[n]||'#9CA3AF'),borderWidth:0}]},options:{cutout:'60%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:12}}}}}},520,340);
+    const yearImg=await chartToImage({type:'bar',data:{labels:yearsAsc.map(([y])=>y),datasets:[{data:yearsAsc.map(([,c])=>c),backgroundColor:CHART_BLUE,borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}},520,340);
+    const partImg=ps.length?await chartToImage({type:'bar',data:{labels:ps.map(([n])=>n),datasets:[{data:ps.map(([,c])=>c),backgroundColor:CHART_BLUE,borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}},1080,340):null;
+
+    const{jsPDF}=window.jspdf;
+    const doc=new jsPDF({unit:'mm',format:'a4'});
+    doc.addFileToVFS('Roboto-Regular.ttf',window.ROBOTO_FONTS.regular);
+    doc.addFont('Roboto-Regular.ttf','Roboto','normal');
+    doc.addFileToVFS('Roboto-Bold.ttf',window.ROBOTO_FONTS.bold);
+    doc.addFont('Roboto-Bold.ttf','Roboto','bold');
+    doc.setFont('Roboto','normal');
+
+    const pageW=doc.internal.pageSize.getWidth();
+    const pageH=doc.internal.pageSize.getHeight();
+    const mx=15;let y=18;
+
+    doc.setFont('Roboto','bold');doc.setFontSize(17);doc.setTextColor(24,95,165);
+    doc.text('Araç Bakım & Masraf Raporu',mx,y);y+=8;
+    doc.setFont('Roboto','normal');doc.setFontSize(10);doc.setTextColor(107,114,128);
+    doc.text(`${v.brand} ${v.model}${v.year?' · '+v.year:''}${v.engine?' · '+v.engine:''}`,mx,y);y+=5;
+    doc.text(`Güncel KM: ${v.current_km.toLocaleString('tr-TR')}   ·   Oluşturma Tarihi: ${new Date().toLocaleDateString('tr-TR')}`,mx,y);y+=9;
+
+    doc.setFont('Roboto','bold');doc.setFontSize(11);doc.setTextColor(26,29,35);
+    doc.text(`Toplam Masraf: ${total.toLocaleString('tr-TR')} ₺`,mx,y);
+    doc.text(`Bakım Sayısı: ${logs.length}`,mx+85,y);
+    doc.text(`Ort / Bakım: ${(logs.length?Math.round(logsTotal/logs.length):0).toLocaleString('tr-TR')} ₺`,mx+135,y);
+    y+=8;
+
+    const chartW=(pageW-2*mx-8)/2,chartH=chartW*0.64;
+    doc.addImage(typeImg,'PNG',mx,y,chartW,chartH);
+    doc.addImage(yearImg,'PNG',mx+chartW+8,y,chartW,chartH);
+    y+=chartH+8;
+    if(partImg){const pw2=pageW-2*mx,ph2=pw2*0.32;doc.addImage(partImg,'PNG',mx,y,pw2,ph2);y+=ph2+8;}
+
+    doc.setFont('Roboto','bold');doc.setFontSize(12);doc.setTextColor(26,29,35);
+    doc.text('Bakım Geçmişi',mx,y);y+=4;
+    doc.autoTable({startY:y,
+      head:[['KM','Tarih','Parçalar','Tutar (₺)']],
+      body:logs.map(l=>[l.km.toLocaleString('tr-TR'),l.date,l.parts.map(p=>p.name).join(', '),(l.total_cost||0).toLocaleString('tr-TR')]),
+      styles:{font:'Roboto',fontSize:8,cellPadding:2.5},
+      headStyles:{fillColor:[24,95,165],textColor:255,font:'Roboto',fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[246,247,249]},
+      margin:{left:mx,right:mx},
+      columnStyles:{0:{cellWidth:20},1:{cellWidth:22},3:{cellWidth:24,halign:'right'}}});
+    y=doc.lastAutoTable.finalY+10;
+    if(y>pageH-40){doc.addPage();y=18;}
+
+    doc.setFont('Roboto','bold');doc.setFontSize(12);doc.setTextColor(26,29,35);
+    doc.text('Yakıt / Sigorta / Muayene Kayıtları',mx,y);y+=4;
+    doc.autoTable({startY:y,
+      head:[['Tür','Tarih','Tutar (₺)','Not']],
+      body:expenses.map(e=>[EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer',e.date,e.amount.toLocaleString('tr-TR'),e.notes||'']),
+      styles:{font:'Roboto',fontSize:8,cellPadding:2.5},
+      headStyles:{fillColor:[24,95,165],textColor:255,font:'Roboto',fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[246,247,249]},
+      margin:{left:mx,right:mx}});
+
+    const pageCount=doc.internal.getNumberOfPages();
+    for(let i=1;i<=pageCount;i++){
+      doc.setPage(i);
+      doc.setFont('Roboto','normal');doc.setFontSize(8);doc.setTextColor(156,163,175);
+      doc.text(`Bakım Takip · Sayfa ${i}/${pageCount}`,pageW-mx,pageH-8,{align:'right'});
+    }
+
+    const blob=doc.output('blob');
+    const filename=`bakim-takip-rapor-${v.brand}-${v.model}-${new Date().toISOString().slice(0,10)}.pdf`.replace(/\s+/g,'-');
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  }catch(e){alert('Rapor oluşturulamadı: '+e.message);}
+  finally{btn.textContent=prevLabel;btn.disabled=false;}
 }
 
 function editExpense(id){

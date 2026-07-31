@@ -60,6 +60,9 @@ nav{flex:1;padding:4px 0}
 .scard-l{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
 .scard-v{font-size:24px;font-weight:700}
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.chart-wrap{position:relative;height:190px;margin-bottom:14px}
+.chart-wrap.donut{height:170px}
+.chart-wrap.wide{height:max(160px,calc(28px*var(--n,4)))}
 .etabs{display:flex;gap:6px;margin:16px 0}
 .etab{padding:7px 16px;border-radius:20px;background:#fff;border:1px solid var(--border);font-size:13px;cursor:pointer;color:var(--t2)}
 .etab:hover{background:#f9fafb}
