@@ -2,7 +2,9 @@ name: Android APK Derle
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "claude/**"
     paths:
       - "bakim-takip-mobile/**"
       - ".github/workflows/build-android-apk.yml"
