@@ -2,6 +2,11 @@
 
 Bu dosya, hem Android (Capacitor) hem de masaüstü (Electron) Bakım Takip uygulamalarındaki sürüm geçmişini takip eder.
 
+## 1.3.1 — 2026-08-01
+
+- Uygulama açılışında marka rengiyle uyumlu, yolda giden bir araba animasyonu içeren splash ekranı eklendi
+- Araçlar (ve diğer) ekranlarda üst bar içeriğinin ekranın en üstüne yapışık durması giderildi, üst boşluk artırıldı
+
 ## 1.3.0 — 2026-08-01
 
 - Bakım kayıtlarına **Servis / Bayi** bilgisi alanı eklendi, geçmiş listesinde gösteriliyor
