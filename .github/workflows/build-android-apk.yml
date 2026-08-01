@@ -54,13 +54,30 @@ jobs:
           name: bakim-takip-apk
           path: bakim-takip-mobile/android/app/build/outputs/apk/debug/bakim-takip.apk
 
+      - name: Read app version
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release notes
+        id: relnotes
+        run: |
+          {
+            echo 'notes<<RELEASE_NOTES_EOF'
+            echo "Otomatik olarak derlenen en güncel Android APK dosyası (v${{ steps.ver.outputs.version }})."
+            echo "Tablete/telefona indirip kurabilirsin (bilinmeyen kaynaklardan yükleme izni gerekebilir)."
+            echo ""
+            echo "### Son güncelleme ($(git log -1 --format=%cd --date=short))"
+            git log -1 --pretty=%B | grep -v -E '^(Co-Authored-By|Claude-Session):'
+            echo ""
+            echo "Tüm sürüm geçmişi: [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)"
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-apk
-          name: "Bakım Takip - Android APK (en güncel)"
-          body: |
-            Otomatik olarak derlenen en güncel Android APK dosyası.
-            Tablete/telefona indirip kurabilirsin (bilinmeyen kaynaklardan yükleme izni gerekebilir).
+          name: "Bakım Takip - Android APK (v${{ steps.ver.outputs.version }})"
+          body: ${{ steps.relnotes.outputs.notes }}
           make_latest: true
           files: bakim-takip-mobile/android/app/build/outputs/apk/debug/bakim-takip.apk
