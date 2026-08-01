@@ -98,9 +98,22 @@ const API={
   },
 };
 
+function hideSplash(){
+  const el=document.getElementById('splash');
+  if(!el)return;
+  el.classList.add('hide');
+  setTimeout(()=>el.remove(),400);
+}
+
 async function init(){
-  try{await loadVehicles();navigate('dashboard');checkMaintenanceReminders();}
-  catch(e){document.getElementById('app').innerHTML=`<div class="vc"><div class="err-msg">Veri yüklenemedi: ${esc(e.message)}</div></div>`;}
+  const minSplash=new Promise(r=>setTimeout(r,900));
+  let err=null;
+  try{await loadVehicles();}catch(e){err=e;}
+  await minSplash;
+  hideSplash();
+  if(err){document.getElementById('app').innerHTML=`<div class="vc"><div class="err-msg">Veri yüklenemedi: ${esc(err.message)}</div></div>`;return;}
+  navigate('dashboard');
+  checkMaintenanceReminders();
 }
 
 async function checkMaintenanceReminders(){
