@@ -90,6 +90,7 @@ function sanitizeLog(l) {
     parts: l.parts.map(sanitizePart).filter(Boolean),
     notes: str(l.notes, 2000),
     total_cost: Number(l.total_cost) || 0,
+    service_name: str(l.service_name, 200),
     created_at: typeof l.created_at === 'string' ? l.created_at : new Date().toISOString(),
   };
 }
@@ -155,15 +156,15 @@ window.api = {
       return logs.filter(l => l.vehicle_id === vehicleId).sort((a, b) => b.km - a.km);
     },
     async create(vehicleId, body) {
-      const { km, date, parts, notes = '', total_cost = 0 } = body;
-      const log = await addRecord('logs', { vehicle_id: vehicleId, km, date, parts, notes, total_cost, created_at: new Date().toISOString() });
+      const { km, date, parts, notes = '', total_cost = 0, service_name = '' } = body;
+      const log = await addRecord('logs', { vehicle_id: vehicleId, km, date, parts, notes, total_cost, service_name, created_at: new Date().toISOString() });
       return { id: log.id };
     },
     async updateLog(id, body) {
       const existing = await getOne('logs', id);
       if (!existing) throw new Error('Kayıt bulunamadı');
-      const { km, date, parts, notes = '', total_cost = 0 } = body;
-      return putRecord('logs', { ...existing, km, date, parts, notes, total_cost, id });
+      const { km, date, parts, notes = '', total_cost = 0, service_name = '' } = body;
+      return putRecord('logs', { ...existing, km, date, parts, notes, total_cost, service_name, id });
     },
     async deleteLog(id) {
       return deleteRecord('logs', id);

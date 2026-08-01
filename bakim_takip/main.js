@@ -53,6 +53,7 @@ function sanitizeLog(l) {
     parts: l.parts.map(sanitizePart).filter(Boolean),
     notes: str(l.notes, 2000),
     total_cost: Number(l.total_cost) || 0,
+    service_name: str(l.service_name, 200),
     created_at: typeof l.created_at === 'string' ? l.created_at : new Date().toISOString(),
   };
 }
@@ -144,11 +145,11 @@ ipcMain.handle('maintenance:list', (e, vehicleId) => {
 
 ipcMain.handle('maintenance:create', (e, vehicleId, body) => {
   const db = load();
-  const { km, date, parts, notes = '', total_cost = 0 } = body;
+  const { km, date, parts, notes = '', total_cost = 0, service_name = '' } = body;
   const log = {
     id: db.nextLogId++,
     vehicle_id: vehicleId,
-    km, date, parts, notes, total_cost,
+    km, date, parts, notes, total_cost, service_name,
     created_at: new Date().toISOString(),
   };
   db.logs.push(log);
@@ -160,8 +161,8 @@ ipcMain.handle('maintenance:updateLog', (e, id, body) => {
   const db = load();
   const idx = db.logs.findIndex(l => l.id === id);
   if (idx === -1) throw new Error('Kayıt bulunamadı');
-  const { km, date, parts, notes = '', total_cost = 0 } = body;
-  db.logs[idx] = { ...db.logs[idx], km, date, parts, notes, total_cost };
+  const { km, date, parts, notes = '', total_cost = 0, service_name = '' } = body;
+  db.logs[idx] = { ...db.logs[idx], km, date, parts, notes, total_cost, service_name };
   save(db);
   return db.logs[idx];
 });
@@ -248,6 +249,17 @@ ipcMain.handle('backup:import', async () => {
   return { success: true };
 });
 
+const PARTS = [
+  { key: 'motor_yagi', name: 'Motor Yağı', km: 7000 }, { key: 'yag_filtresi', name: 'Yağ Filtresi', km: 7000 },
+  { key: 'hava_filtresi', name: 'Hava Filtresi', km: 15000 }, { key: 'polen_filtresi', name: 'Polen Filtresi', km: 15000 },
+  { key: 'yakit_filtresi', name: 'Yakıt Filtresi', km: 30000 }, { key: 'triger', name: 'Triger Kayışı', km: 60000 },
+  { key: 'devirdaim', name: 'Devirdaim Pompası', km: 60000 }, { key: 'bujiler', name: 'Bujiler', km: 40000 },
+  { key: 'on_balata', name: 'Ön Fren Balata', km: 40000 }, { key: 'arka_balata', name: 'Arka Fren Balata', km: 40000 },
+  { key: 'fren_diski', name: 'Fren Diski', km: 60000 }, { key: 'antifriz', name: 'Antifriz', km: 40000 },
+  { key: 'sanziman_yagi', name: 'Şanzıman Yağı', km: 60000 }, { key: 'direksiyon_yagi', name: 'Direksiyon Yağı', km: 40000 },
+  { key: 'klima_gazi', name: 'Klima Gazı', km: 40000 },
+];
+
 function checkDueReminders() {
   if (!Notification.isSupported()) return;
   const db = load();
@@ -264,6 +276,25 @@ function checkDueReminders() {
       title: `${typeLabels[exp.type]} ${overdue ? 'süresi geçti' : 'yaklaşıyor'}`,
       body: `${vehicle ? vehicle.brand + ' ' + vehicle.model : 'Araç'} — ${exp.due_date}`,
     }).show();
+  }
+  for (const vehicle of db.vehicles) {
+    const logs = db.logs.filter(l => l.vehicle_id === vehicle.id);
+    const currentKm = deriveCurrentKm(vehicle, db.logs);
+    const lastOf = {};
+    for (const log of [...logs].sort((a, b) => b.km - a.km))
+      for (const p of log.parts)
+        if (!lastOf[p.key]) lastOf[p.key] = { km: log.km };
+    for (const part of PARTS) {
+      const last = lastOf[part.key];
+      if (!last) continue;
+      const prog = Math.min(100, Math.round(((currentKm - last.km) / part.km) * 100));
+      if (prog < 90) continue;
+      const overdue = prog >= 100;
+      new Notification({
+        title: `${part.name} ${overdue ? 'değişim zamanı geçti' : 'değişimi yaklaşıyor'}`,
+        body: `${vehicle.brand} ${vehicle.model} için bakım gerekebilir.`,
+      }).show();
+    }
   }
 }
 

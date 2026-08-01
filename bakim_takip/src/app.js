@@ -17,6 +17,13 @@ const ICONS={
   gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2.5 12h3M18.5 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   download:'<path d="M6 2h9l3 3v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M12 10.5v6M9.5 14l2.5 2.5L14.5 14"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+  moon:'<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
+  wrench:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2z"/>',
+  gauge:'<circle cx="12" cy="13" r="8"/><path d="M12 13l3-4M8 7.5l.7.7M16 7.5l-.7.7M6 13h1M17 13h1M12 5v1"/>',
+  trend:'<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
+  alert:'<path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 21a2 2 0 0 0 4 0"/>',
 };
 function icon(name,size,strokeWidth){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth||1.8}" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`;
@@ -49,15 +56,10 @@ function initTheme(){
   const saved=localStorage.getItem('theme');
   if(saved==='dark'||saved==='light')document.documentElement.setAttribute('data-theme',saved);
 }
-function themeBtnLabel(){
-  return getEffectiveTheme()==='dark'?'🌙 Koyu Mod':'☀️ Açık Mod';
-}
-function toggleTheme(){
-  const next=getEffectiveTheme()==='dark'?'light':'dark';
-  document.documentElement.setAttribute('data-theme',next);
-  localStorage.setItem('theme',next);
-  const btn=document.getElementById('theme-btn');
-  if(btn)btn.textContent=themeBtnLabel();
+function setTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('theme',t);
+  document.querySelectorAll('.seg-btn[data-theme-btn]').forEach(b=>b.classList.toggle('active',b.dataset.themeBtn===t));
 }
 
 initTheme();
@@ -115,7 +117,6 @@ function renderLayout(view){
         ${state.vehicles.length?`<div class="v-sel-wrap"><select class="v-sel" onchange="changeVehicle(this.value)">${opts}</select></div>`:''}
       </div>
       <nav>${nav.map(n=>`<div class="nav-item ${view===n.id?'active':''}" onclick="navigate('${n.id}')"><span class="ni">${n.icon}</span><span>${n.label}</span></div>`).join('')}</nav>
-      <div class="sb-bottom"><button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">${themeBtnLabel()}</button></div>
     </div>
     <div class="main" id="main"></div>
   </div>`;
@@ -134,6 +135,13 @@ async function navigate(view,arg){
 
 function changeVehicle(id){state.selId=parseInt(id);navigate(state.view);}
 
+function computeKmReminder(logs,expenses){
+  const dates=[...logs.map(l=>l.date),...expenses.filter(e=>e.km!=null).map(e=>e.date)].filter(Boolean).sort();
+  const lastDate=dates[dates.length-1]||null;
+  const daysSince=lastDate?Math.round((Date.now()-new Date(lastDate))/86400000):null;
+  return{lastDate,daysSince};
+}
+
 async function renderDashboard(el){
   const v=selVehicle();
   if(!v){el.innerHTML=`<div class="vc"><div class="empty"><p>Araç yok.</p><br><button class="btn" onclick="navigate('vehicles')">Araç Ekle</button></div></div>`;return;}
@@ -141,6 +149,8 @@ async function renderDashboard(el){
   try{
     const logs=await API.get('/maintenance/'+v.id);
     const expenses=await window.api.expenses.list(v.id);
+    const kmR=computeKmReminder(logs,expenses);
+    const kmBanner=(kmR.daysSince===null||kmR.daysSince>30)?`<div class="banner">${icon('gauge',18)}<div><b>Kilometre girişi hatırlatması</b> — ${kmR.lastDate?`En son ${kmR.daysSince} gün önce (${esc(kmR.lastDate)}) güncelleme yaptınız.`:'Henüz kilometre girişi yapılmadı.'} Güncel kilometreni girmeyi unutma.</div></div>`:'';
     const lastOf={};
     for(const log of [...logs].sort((a,b)=>b.km-a.km))
       for(const p of log.parts)
@@ -171,6 +181,7 @@ async function renderDashboard(el){
     const heroLogoUrl=brandLogoUrl(v.brand);
     const heroIconHtml=heroLogoUrl?`<img src="${esc(heroLogoUrl)}" alt="" style="width:34px;height:34px;object-fit:contain" onerror="handleLogoError(this,30)">`:carIcon(30);
     el.innerHTML=`<div class="vc">
+      ${kmBanner}
       <div class="vh-card" style="${heroStyle}"><div class="vh-icon" style="background:#fff;color:var(--blue)">${heroIconHtml}</div><div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div><div class="vh-km"><span class="km-v">${v.current_km.toLocaleString('tr-TR')}</span><span class="km-l">km</span></div></div>
       <div class="slabel">Parça Durumları</div>
       <div class="pgrid">${cards}${dueCards}</div>
@@ -217,6 +228,7 @@ function renderMaintForm(body,log){
   const customParts=(log?.parts||[]).filter(p=>String(p.key).startsWith('custom_'));
   body.innerHTML=`<div class="fcard">
     <div class="frow"><div class="fg"><label>Kilometre *</label><input type="number" id="m-km" value="${esc(log?log.km:v.current_km)}"></div><div class="fg"><label>Tarih *</label><input type="date" id="m-date" value="${esc(log?log.date:new Date().toISOString().split('T')[0])}"></div><div class="fg"><label>Toplam Tutar (₺)</label><input type="number" id="m-cost" placeholder="0" min="0" value="${esc(log?.total_cost||'')}"></div></div>
+    <div class="fg"><label>Servis / Bayi</label><input type="text" id="m-service" placeholder="Ör. Volvo Yetkili Servis - Kadıköy" value="${esc(log?.service_name||'')}"></div>
     <div class="fg"><label>Değiştirilen Parçalar</label><div class="pcl">${PARTS.map(p=>{
       const checked=checkedKeys.has(p.key);
       const existing=(log?.parts||[]).find(x=>x.key===p.key);
@@ -285,6 +297,7 @@ async function saveMaint(){
   const date=document.getElementById('m-date').value;
   const notes=document.getElementById('m-notes').value;
   const total_cost=parseFloat(document.getElementById('m-cost').value)||0;
+  const service_name=document.getElementById('m-service').value.trim();
   const errEl=document.getElementById('m-err');const okEl=document.getElementById('m-ok');
   if(!km||!date){errEl.textContent='Kilometre ve tarih zorunlu.';errEl.classList.remove('hidden');return;}
   const parts=[];
@@ -299,8 +312,8 @@ async function saveMaint(){
   errEl.classList.add('hidden');
   try{
     const wasEditing=!!editingLogId;
-    if(wasEditing)await API.put('/maintenance/log/'+editingLogId,{km,date,parts,notes,total_cost});
-    else await API.post('/maintenance/'+state.selId,{km,date,parts,notes,total_cost});
+    if(wasEditing)await API.put('/maintenance/log/'+editingLogId,{km,date,parts,notes,total_cost,service_name});
+    else await API.post('/maintenance/'+state.selId,{km,date,parts,notes,total_cost,service_name});
     editingLogId=null;
     await loadVehicles();okEl.classList.remove('hidden');
     setTimeout(()=>navigate(wasEditing?'history':'dashboard'),1000);
@@ -313,7 +326,7 @@ async function renderHistory(el){
   el.innerHTML='<div class="vc"><div class="loading">Yükleniyor...</div></div>';
   try{
     const logs=await API.get('/maintenance/'+v.id);
-    const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${l.km.toLocaleString('tr-TR')} km</span><span class="ldate">${esc(l.date)}</span></div><div>${l.total_cost?`<span class="lcost">${l.total_cost.toLocaleString('tr-TR')} ₺</span>`:''}<button class="btn-s" onclick="editLog(${l.id})">Düzenle</button><button class="btn-d" onclick="delLog(${l.id})">Sil</button></div></div><div class="lparts">${l.parts.map(p=>`<span class="ptag">${esc(p.name)}${p.brand?' · '+esc(p.brand):''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${esc(l.notes)}</div>`:''}</div>`).join('')||'<div class="empty">Kayıt yok.</div>';
+    const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${l.km.toLocaleString('tr-TR')} km</span><span class="ldate">${esc(l.date)}</span></div><div>${l.total_cost?`<span class="lcost">${l.total_cost.toLocaleString('tr-TR')} ₺</span>`:''}<button class="btn-s" onclick="editLog(${l.id})">Düzenle</button><button class="btn-d" onclick="delLog(${l.id})">Sil</button></div></div>${l.service_name?`<div class="lservice">${icon('wrench',13)} ${esc(l.service_name)}</div>`:''}<div class="lparts">${l.parts.map(p=>`<span class="ptag">${esc(p.name)}${p.brand?' · '+esc(p.brand):''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${esc(l.notes)}</div>`:''}</div>`).join('')||'<div class="empty">Kayıt yok.</div>';
     el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Bakım Geçmişi</h2><button class="btn" onclick="navigate('add')">${icon('plus',14)} Bakım Ekle</button></div><div class="llist">${rows}</div></div>`;
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${esc(e.message)}</div></div>`;}
 }
@@ -323,6 +336,33 @@ function editLog(id){navigate('add',{type:'bakim',id});}
 async function delLog(id){
   if(!confirm('Bu kaydı silmek istiyor musunuz?'))return;
   await API.del('/maintenance/log/'+id);navigate('history');
+}
+
+function computeYearlyComparison(ys){
+  const curY=String(new Date().getFullYear());
+  const prevY=String(new Date().getFullYear()-1);
+  const curTotal=ys.find(([y])=>y===curY)?.[1]||0;
+  const prevTotal=ys.find(([y])=>y===prevY)?.[1]||0;
+  const pct=prevTotal>0?Math.round(((curTotal-prevTotal)/prevTotal)*100):null;
+  return{curY,prevY,curTotal,prevTotal,pct};
+}
+
+function computeNextExpenseEstimate(logs,expenses){
+  const events=[...logs.map(l=>({date:l.date,amount:l.total_cost||0})),...expenses.map(e=>({date:e.date,amount:e.amount||0}))]
+    .filter(e=>e.date).sort((a,b)=>a.date.localeCompare(b.date));
+  if(events.length<2)return null;
+  let totalGap=0,gapCount=0;
+  for(let i=1;i<events.length;i++){
+    const days=(new Date(events[i].date)-new Date(events[i-1].date))/86400000;
+    if(days>=0){totalGap+=days;gapCount++;}
+  }
+  if(!gapCount)return null;
+  const avgGapDays=Math.round(totalGap/gapCount);
+  const avgAmount=events.reduce((s,e)=>s+e.amount,0)/events.length;
+  const lastDate=events[events.length-1].date;
+  const daysSinceLast=Math.max(0,Math.round((Date.now()-new Date(lastDate))/86400000));
+  const est=new Date(lastDate);est.setDate(est.getDate()+avgGapDays);
+  return{avgGapDays,avgAmount,daysSinceLast,estimatedNextDate:est.toISOString().split('T')[0]};
 }
 
 async function renderExpenses(el){
@@ -346,6 +386,8 @@ async function renderExpenses(el){
     const ys=Object.entries(byYear).sort((a,b)=>b[0]-a[0]);
     const ps=Object.entries(byPart).sort((a,b)=>b[1]-a[1]).slice(0,6);const maxP=ps[0]?.[1]||1;
     const ts=Object.entries(byType).filter(([,c])=>c>0).sort((a,b)=>b[1]-a[1]);const maxT=ts[0]?.[1]||1;
+    const yc=computeYearlyComparison(ys);
+    const est=computeNextExpenseEstimate(logs,expenses);
     const recentExp=expenses.map(e=>{
       const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
       return `<div class="lcard"><div class="lhead"><div><span class="lkm">${label}</span><span class="ldate">${esc(e.date)}</span></div><div><span class="lcost">${e.amount.toLocaleString('tr-TR')} ₺</span><button class="btn-s" onclick="editExpense(${e.id})">Düzenle</button><button class="btn-d" onclick="delExpense(${e.id})">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${esc(e.due_date)}</span></div>`:''}${e.notes?`<div class="lnotes">${esc(e.notes)}</div>`:''}</div>`;
@@ -357,6 +399,25 @@ async function renderExpenses(el){
         <div class="card"><div class="ctitle">Parçaya Göre</div><div class="ebars">${ps.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxP)*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
       </div>
       <div class="card" style="margin-top:12px"><div class="ctitle">Türe Göre</div><div class="ebars">${ts.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxT)*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')}</div></div>
+      <div class="two" style="margin-top:12px">
+        <div class="card">
+          <div class="ctitle">Yıllık Karşılaştırma</div>
+          <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+            <div><div style="font-size:11px;color:var(--t2);margin-bottom:4px">${yc.curY}</div><div style="font-size:22px;font-weight:800">${yc.curTotal.toLocaleString('tr-TR')} ₺</div></div>
+            <div><div style="font-size:11px;color:var(--t2);margin-bottom:4px">${yc.prevY}</div><div style="font-size:16px;font-weight:600;color:var(--t2)">${yc.prevTotal.toLocaleString('tr-TR')} ₺</div></div>
+            ${yc.pct!==null?`<span class="badge ${yc.pct>0?'br':'bg'}">${yc.pct>0?'+':''}${yc.pct}%</span>`:''}
+          </div>
+          ${yc.prevTotal===0?'<p style="font-size:12px;color:var(--t3);margin-top:8px">Geçen yıl verisi yok, karşılaştırma yapılamıyor.</p>':''}
+        </div>
+        <div class="card">
+          <div class="ctitle">Tahmini Sıradaki Masraf</div>
+          ${est?`<p style="font-size:13px;color:var(--t2);margin-bottom:10px">Ortalama her <b>${est.avgGapDays}</b> günde bir masraf giriyorsun. Son masrafın <b>${est.daysSinceLast}</b> gün önceydi.</p>
+          <div style="display:flex;gap:24px">
+            <div><div style="font-size:11px;color:var(--t2);margin-bottom:4px">Tahmini Tutar</div><div style="font-size:20px;font-weight:800">~${Math.round(est.avgAmount).toLocaleString('tr-TR')} ₺</div></div>
+            <div><div style="font-size:11px;color:var(--t2);margin-bottom:4px">Tahmini Tarih</div><div style="font-size:20px;font-weight:800">${est.estimatedNextDate}</div></div>
+          </div>`:'<p style="font-size:12px;color:var(--t3)">Tahmin için en az 2 masraf kaydı gerekli.</p>'}
+        </div>
+      </div>
       <div class="slabel" style="margin-top:20px">Yakıt / Sigorta / Muayene Kayıtları</div>
       <div class="llist">${recentExp}</div>
     </div>`;
@@ -508,7 +569,16 @@ async function delVehicle(id){
 }
 
 function renderSettings(el){
-  el.innerHTML=`<div class="vc"><h2 class="vtitle">Ayarlar</h2><div class="fcard"><h3>Veri Yedekleme</h3>
+  const theme=getEffectiveTheme();
+  el.innerHTML=`<div class="vc"><h2 class="vtitle">Ayarlar</h2>
+  <div class="fcard"><h3>Görünüm</h3>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Uygulamanın açık ya da koyu temada görünmesini seç.</p>
+    <div class="seg">
+      <button class="seg-btn ${theme==='light'?'active':''}" data-theme-btn="light" onclick="setTheme('light')">${icon('sun',16)} Açık</button>
+      <button class="seg-btn ${theme==='dark'?'active':''}" data-theme-btn="dark" onclick="setTheme('dark')">${icon('moon',16)} Koyu</button>
+    </div>
+  </div>
+  <div class="fcard"><h3>Veri Yedekleme</h3>
     <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Tüm araç ve bakım verilerini bir JSON dosyasına kaydedebilir ya da önceden alınmış bir yedeği geri yükleyebilirsin.</p>
     <div id="bk-msg" class="ok-msg hidden"></div>
     <div class="facts" style="justify-content:flex-start">

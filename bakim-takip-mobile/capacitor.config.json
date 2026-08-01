@@ -1,5 +1,10 @@
 {
   "appId": "com.bakim.takip.mobile",
   "appName": "Bakım Takip",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#3D63DD"
+    }
+  }
 }
