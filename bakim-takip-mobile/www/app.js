@@ -11,6 +11,19 @@ function carIcon(size){
   return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" fill="currentColor"><path d="M228 620 C228 590 250 566 284 560 L300 494 C312 452 350 424 396 424 L628 424 C674 424 712 452 724 494 L740 560 C774 566 796 590 796 620 L796 668 C796 690 778 708 756 708 L268 708 C246 708 228 690 228 668 Z"/><circle cx="352" cy="716" r="60"/><circle cx="672" cy="716" r="60"/></svg>`;
 }
 
+const ICONS={
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  plusCircle:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 1.8"/>',
+  wallet:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1" fill="currentColor" stroke="none"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2.5 12h3M18.5 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  download:'<path d="M6 2h9l3 3v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M12 10.5v6M9.5 14l2.5 2.5L14.5 14"/>',
+};
+function icon(name,size,strokeWidth){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth||1.8}" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`;
+}
+
 function brandLogoUrl(brand){
   const tpl=localStorage.getItem('logoCdnTemplate');
   if(!tpl||!brand)return null;
@@ -96,7 +109,7 @@ async function loadVehicles(){
 function selVehicle(){return state.vehicles.find(v=>v.id===state.selId)||null;}
 
 function renderLayout(view){
-  const nav=[{id:'dashboard',icon:'▦',label:'Dashboard'},{id:'add',icon:'+',label:'Bakım Ekle'},{id:'history',icon:'◷',label:'Geçmiş'},{id:'expenses',icon:'₺',label:'Masraflar'},{id:'vehicles',icon:'◈',label:'Araçlar'},{id:'settings',icon:'⚙',label:'Ayarlar'}];
+  const nav=[{id:'dashboard',icon:icon('grid',18),label:'Dashboard'},{id:'add',icon:icon('plusCircle',18),label:'Bakım Ekle'},{id:'history',icon:icon('clock',18),label:'Geçmiş'},{id:'expenses',icon:icon('wallet',18),label:'Masraflar'},{id:'vehicles',icon:carIcon(18),label:'Araçlar'},{id:'settings',icon:icon('gear',18),label:'Ayarlar'}];
   const opts=state.vehicles.map(v=>`<option value="${v.id}" ${v.id===state.selId?'selected':''}>${esc(v.brand)} ${esc(v.model)}</option>`).join('');
   document.getElementById('app').innerHTML=`<div class="layout">
     <div class="sb">
@@ -212,7 +225,7 @@ function renderMaintForm(body,log){
       const existing=(log?.parts||[]).find(x=>x.key===p.key);
       return `<label class="pchk"><input type="checkbox" data-key="${p.key}" data-name="${p.name}" ${checked?'checked':''}><span>${p.name}</span><input type="text" class="binput ${checked?'':'hidden'}" placeholder="Marka / Not" value="${esc(existing?.brand||'')}"><input type="number" class="cinput ${checked?'':'hidden'}" placeholder="₺" min="0" value="${esc(existing?.cost||'')}"></label>`;
     }).join('')}</div></div>
-    <div class="fg"><label>Serbest Parça</label><div id="custom-parts"></div><button class="btn-s" onclick="addCustomPart()">+ Parça Ekle</button></div>
+    <div class="fg"><label>Serbest Parça</label><div id="custom-parts"></div><button class="btn-s" onclick="addCustomPart()">${icon('plus',14)} Parça Ekle</button></div>
     <div class="fg"><label>Notlar</label><textarea id="m-notes" rows="3" placeholder="Servis, gözlem...">${esc(log?.notes||'')}</textarea></div>
     <div id="m-err" class="err-msg hidden"></div><div id="m-ok" class="ok-msg hidden">Kaydedildi!</div>
     <div class="facts"><button class="btn-s" onclick="navigate(editingLogId?'history':'dashboard')">İptal</button><button class="btn" onclick="saveMaint()">Kaydet</button></div>
@@ -304,7 +317,7 @@ async function renderHistory(el){
   try{
     const logs=await API.get('/maintenance/'+v.id);
     const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${l.km.toLocaleString('tr-TR')} km</span><span class="ldate">${esc(l.date)}</span></div><div>${l.total_cost?`<span class="lcost">${l.total_cost.toLocaleString('tr-TR')} ₺</span>`:''}<button class="btn-s" onclick="editLog(${l.id})">Düzenle</button><button class="btn-d" onclick="delLog(${l.id})">Sil</button></div></div><div class="lparts">${l.parts.map(p=>`<span class="ptag">${esc(p.name)}${p.brand?' · '+esc(p.brand):''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${esc(l.notes)}</div>`:''}</div>`).join('')||'<div class="empty">Kayıt yok.</div>';
-    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Bakım Geçmişi</h2><button class="btn" onclick="navigate('add')">+ Bakım Ekle</button></div><div class="llist">${rows}</div></div>`;
+    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Bakım Geçmişi</h2><button class="btn" onclick="navigate('add')">${icon('plus',14)} Bakım Ekle</button></div><div class="llist">${rows}</div></div>`;
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${esc(e.message)}</div></div>`;}
 }
 
@@ -346,7 +359,7 @@ async function renderExpenses(el){
       const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
       return `<div class="lcard"><div class="lhead"><div><span class="lkm">${label}</span><span class="ldate">${esc(e.date)}</span></div><div><span class="lcost">${e.amount.toLocaleString('tr-TR')} ₺</span><button class="btn-s" onclick="editExpense(${e.id})">Düzenle</button><button class="btn-d" onclick="delExpense(${e.id})">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${esc(e.due_date)}</span></div>`:''}${e.notes?`<div class="lnotes">${esc(e.notes)}</div>`:''}</div>`;
     }).join('')||'<div class="empty">Kayıt yok.</div>';
-    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Masraf Analizi</h2><div style="display:flex;gap:8px"><button class="btn-s" id="pdf-btn" onclick="generateReport()">📄 PDF Rapor</button><button class="btn" onclick='navigate("add",{type:"yakit"})'>+ Masraf Ekle</button></div></div>
+    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Masraf Analizi</h2><div style="display:flex;gap:8px;align-items:center"><button class="icon-btn" id="pdf-btn" onclick="generateReport()" title="PDF Rapor İndir" aria-label="PDF Rapor İndir">${icon('download',18)}</button><button class="btn" onclick='navigate("add",{type:"yakit"})'>${icon('plus',14)} Masraf Ekle</button></div></div>
       <div class="scards"><div class="scard"><div class="scard-l">Toplam</div><div class="scard-v">${total.toLocaleString('tr-TR')} ₺</div></div><div class="scard"><div class="scard-l">Bakım Sayısı</div><div class="scard-v">${logs.length}</div></div><div class="scard"><div class="scard-l">Ort / Bakım</div><div class="scard-v">${logs.length?Math.round(logsTotal/logs.length).toLocaleString('tr-TR'):0} ₺</div></div></div>
       <div class="two">
         <div class="card"><div class="ctitle">Yıla Göre</div><div class="chart-wrap"><canvas id="chart-year"></canvas></div><div class="ebars">${ys.map(([y,c])=>`<div class="erow"><span class="ename">${esc(y)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/(total||1))*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
@@ -394,8 +407,7 @@ async function generateReport(){
   const v=selVehicle();
   if(!v)return;
   const btn=document.getElementById('pdf-btn');
-  const prevLabel=btn.textContent;
-  btn.textContent='Oluşturuluyor...';btn.disabled=true;
+  btn.disabled=true;btn.style.opacity='.5';btn.title='Oluşturuluyor...';
   try{
     const logs=await API.get('/maintenance/'+v.id);
     const expenses=await window.api.expenses.list(v.id);
@@ -470,7 +482,7 @@ async function generateReport(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
   }catch(e){alert('Rapor oluşturulamadı: '+e.message);}
-  finally{btn.textContent=prevLabel;btn.disabled=false;}
+  finally{btn.disabled=false;btn.style.opacity='';btn.title='PDF Rapor İndir';}
 }
 
 function editExpense(id){
@@ -495,7 +507,7 @@ async function renderVehicles(el){
     const iconHtml=v.photo?`<img src="${esc(v.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`:logoUrl?`<img src="${esc(logoUrl)}" alt="" style="width:26px;height:26px;object-fit:contain" onerror="handleLogoError(this,24)">`:carIcon(24);
     return `<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle(${v.id});navigate('dashboard')"><div class="vci-icon">${iconHtml}</div><div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle(${v.id})">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle(${v.id})">Sil</button></div>`;
   }).join('');
-  el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Araçlar</h2><button class="btn" onclick="showAddVehicle()">+ Araç Ekle</button></div><div class="vlist">${cards}</div>
+  el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Araçlar</h2><button class="btn" onclick="showAddVehicle()">${icon('plus',14)} Araç Ekle</button></div><div class="vlist">${cards}</div>
     <div id="add-v-form" class="fcard hidden"><h3 id="v-form-title">Yeni Araç</h3>
       <div class="frow"><div class="fg"><label>Marka *</label><div style="display:flex;gap:8px;align-items:center"><input id="v-brand" placeholder="Volvo" oninput="updateBrandLogoPreview()" style="flex:1"><div id="v-brand-logo" style="width:36px;height:36px;border-radius:8px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0"></div></div></div><div class="fg"><label>Model *</label><input id="v-model" placeholder="S60"></div></div>
       <div class="frow"><div class="fg"><label>Yıl</label><input id="v-year" type="number" placeholder="2011"></div><div class="fg"><label>Motor</label><input id="v-engine" placeholder="1.6 T4"></div></div>
