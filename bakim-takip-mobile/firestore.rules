@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, update: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false; // hesap silme ayrı bir akışla (Cloud Function) yönetilecek
+
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /part_types/{partTypeId} {
+      allow read: if isSignedIn();
+      allow write: if false; // sadece Admin SDK / Console günceller
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow create, delete: if false; // sadece Cloud Function/Admin SDK oluşturur
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // ownerId update'te değiştirilemez
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+
+      match /expenses/{expenseId} {
+        allow read, update, delete: if isSignedIn()
+          && resource.data.ownerId == request.auth.uid;
+
+        allow create: if isSignedIn()
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.vehicleId == vehicleId
+          && get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.ownerId
+             == request.auth.uid;
+      }
+
+      match /parts/{partId} {
+        allow read, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+        allow create: if isSignedIn()
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.vehicleId == vehicleId
+          && get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.ownerId
+             == request.auth.uid;
+
+        // remainingKm/remainingMonths/status/notifiedStatus client'tan asla değişmemeli
+        // (bu alanları sadece Admin SDK yazar; Admin SDK zaten rules'u bypass eder).
+        allow update: if isSignedIn()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['remainingKm', 'remainingMonths', 'status', 'notifiedStatus']);
+      }
+    }
+  }
+}

@@ -4,40 +4,160 @@ const EXPENSE_TYPES=[{id:'bakim',label:'Bakım'},{id:'yakit',label:'Yakıt'},{id
 const DUE_TYPES=[{id:'sigorta',label:'Sigorta'},{id:'muayene',label:'Muayene'}];
 
 let state={vehicles:[],selId:null,view:'dashboard'};
+// Dashboard'un en üstündeki uyarı banner'ının (renderWarningsSummary) son hesapladığı
+// toplam uyarı sayısı. Sidebar'daki Dashboard nav rozetini doldurmak için kullanılır —
+// renderLayout her navigate()'te bu tekil değişkenden okur, bu yüzden bir adım geriden
+// gelebilir (önceki dashboard render'ından), sonraki hesaplama bittiğinde rozet DOM'da
+// doğrudan güncellenir (bkz. renderWarningsSummary).
+let warningCount=0;
 
+// NOT: ID'ler artık Firestore doküman ID'leri (alfasayısal string), eski IndexedDB
+// autoIncrement sayılar değil — path regex'leri (\d+) yerine (.+) kullanır ve
+// parseInt() çağrıları kaldırılmıştır. put/del ayrıca opsiyonel bir vehicleId
+// parametresi alır: Firestore'da maintenance/expense kayıtları aracın altında
+// subcollection olduğundan, güncelleme/silme için hangi aracın altında
+// aranacağını bilmek gerekir (idb-adapter bunu kullanmaz, zararsızca yok sayar).
 const API={
   async get(path){
     if(path==='/vehicles')return window.api.vehicles.list();
-    const m=path.match(/^\/maintenance\/(\d+)$/);
-    if(m)return window.api.maintenance.list(parseInt(m[1]));
+    const m=path.match(/^\/maintenance\/(.+)$/);
+    if(m)return window.api.maintenance.list(m[1]);
     throw new Error('Bilinmeyen istek: '+path);
   },
   async post(path,body){
     if(path==='/vehicles')return window.api.vehicles.create(body);
-    const m=path.match(/^\/maintenance\/(\d+)$/);
-    if(m)return window.api.maintenance.create(parseInt(m[1]),body);
+    const m=path.match(/^\/maintenance\/(.+)$/);
+    if(m)return window.api.maintenance.create(m[1],body);
     throw new Error('Bilinmeyen istek: '+path);
   },
-  async put(path,body){
-    const m=path.match(/^\/vehicles\/(\d+)$/);
-    if(m)return window.api.vehicles.update(parseInt(m[1]),body);
-    const ml=path.match(/^\/maintenance\/log\/(\d+)$/);
-    if(ml)return window.api.maintenance.updateLog(parseInt(ml[1]),body);
+  async put(path,body,vehicleId){
+    const m=path.match(/^\/vehicles\/(.+)$/);
+    if(m)return window.api.vehicles.update(m[1],body);
+    const ml=path.match(/^\/maintenance\/log\/(.+)$/);
+    if(ml)return window.api.maintenance.updateLog(ml[1],body,vehicleId);
     throw new Error('Bilinmeyen istek: '+path);
   },
-  async del(path){
-    const mv=path.match(/^\/vehicles\/(\d+)$/);
-    if(mv)return window.api.vehicles.delete(parseInt(mv[1]));
-    const ml=path.match(/^\/maintenance\/log\/(\d+)$/);
-    if(ml)return window.api.maintenance.deleteLog(parseInt(ml[1]));
+  async del(path,vehicleId){
+    const mv=path.match(/^\/vehicles\/(.+)$/);
+    if(mv)return window.api.vehicles.delete(mv[1]);
+    const ml=path.match(/^\/maintenance\/log\/(.+)$/);
+    if(ml)return window.api.maintenance.deleteLog(ml[1],vehicleId);
     throw new Error('Bilinmeyen istek: '+path);
   },
 };
 
-async function init(){
-  try{await loadVehicles();navigate('dashboard');}
-  catch(e){document.getElementById('app').innerHTML=`<div class="vc"><div class="err-msg">Veri yüklenemedi: ${e.message}</div></div>`;}
+// Kimlik doğrulama akışı window.authApi (firebase-adapter.js) üzerinden yürütülür.
+// onAuthStateChanged, oturum her değiştiğinde (açılış, giriş, çıkış) tetiklenir;
+// giriş yoksa login ekranı, girişliyse mevcut dashboard akışı gösterilir.
+function init(){
+  window.authApi.onAuthStateChanged(async(user)=>{
+    if(!user){state.vehicles=[];state.selId=null;renderLogin();return;}
+    try{await loadVehicles();navigate('dashboard');}
+    catch(e){document.getElementById('app').innerHTML=`<div class="vc"><div class="err-msg">Veri yüklenemedi: ${e.message}</div></div>`;}
+  });
 }
+
+function isValidEmail(s){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);}
+
+function authErrorMessage(e){
+  const map={
+    'auth/invalid-credential':'E-posta veya şifre hatalı.',
+    'auth/invalid-email':'Geçerli bir e-posta girin.',
+    'auth/user-not-found':'E-posta veya şifre hatalı.',
+    'auth/wrong-password':'E-posta veya şifre hatalı.',
+    'auth/email-already-in-use':'Bu e-posta ile zaten bir hesap var.',
+    'auth/weak-password':'Şifre en az 8 karakter olmalı.',
+    'auth/too-many-requests':'Çok fazla deneme yapıldı, biraz sonra tekrar deneyin.',
+    'auth/network-request-failed':'Bağlantı hatası, internetinizi kontrol edin.',
+  };
+  return map[e.code]||e.message;
+}
+
+function renderAuthShell(title,bodyHtml){
+  document.getElementById('app').innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="width:100%;max-width:380px">
+      <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:24px">
+        <svg width="30" height="30" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#185FA5"/><path d="M8 28L20 14l12 14" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="22" r="3" fill="#fff"/></svg>
+        <span style="font-size:17px;font-weight:500">Bakım Takip</span>
+      </div>
+      <div class="fcard" style="margin-top:0"><h3>${title}</h3>${bodyHtml}</div>
+    </div>
+  </div>`;
+}
+
+function renderLogin(){
+  renderAuthShell('Giriş Yap',`
+    <div class="fg"><label>E-posta</label><input type="email" id="lg-email" placeholder="ornek@eposta.com"></div>
+    <div class="fg"><label>Şifre</label><input type="password" id="lg-pass" placeholder="••••••••"></div>
+    <div id="lg-err" class="err-msg hidden"></div>
+    <div class="facts" style="justify-content:stretch"><button class="btn" style="width:100%" onclick="doLogin()">Giriş Yap</button></div>
+    <div style="display:flex;justify-content:space-between;margin-top:14px;font-size:12px">
+      <span class="btn-t" style="cursor:pointer" onclick="renderForgotPassword()">Şifremi Unuttum</span>
+      <span class="btn-t" style="cursor:pointer" onclick="renderRegister()">Hesabın yok mu? Kayıt Ol</span>
+    </div>`);
+}
+
+async function doLogin(){
+  const email=document.getElementById('lg-email').value.trim();
+  const pass=document.getElementById('lg-pass').value;
+  const errEl=document.getElementById('lg-err');
+  if(!isValidEmail(email)){errEl.textContent='Geçerli bir e-posta girin.';errEl.classList.remove('hidden');return;}
+  if(!pass){errEl.textContent='Şifre gerekli.';errEl.classList.remove('hidden');return;}
+  errEl.classList.add('hidden');
+  try{await window.authApi.login(email,pass);}
+  catch(e){errEl.textContent=authErrorMessage(e);errEl.classList.remove('hidden');}
+}
+
+function renderRegister(){
+  renderAuthShell('Kayıt Ol',`
+    <div class="fg"><label>Ad Soyad</label><input type="text" id="rg-name" placeholder="Adınız Soyadınız"></div>
+    <div class="fg"><label>E-posta</label><input type="email" id="rg-email" placeholder="ornek@eposta.com"></div>
+    <div class="fg"><label>Şifre</label><input type="password" id="rg-pass" placeholder="En az 8 karakter"></div>
+    <div class="fg"><label>Şifre (Tekrar)</label><input type="password" id="rg-pass2" placeholder="••••••••"></div>
+    <div id="rg-err" class="err-msg hidden"></div>
+    <div id="rg-ok" class="ok-msg hidden">Kayıt başarılı! Doğrulama e-postası gönderildi.</div>
+    <div class="facts" style="justify-content:stretch"><button class="btn" style="width:100%" onclick="doRegister()">Kayıt Ol</button></div>
+    <div style="text-align:center;margin-top:14px;font-size:12px"><span class="btn-t" style="cursor:pointer" onclick="renderLogin()">Zaten hesabın var mı? Giriş Yap</span></div>`);
+}
+
+async function doRegister(){
+  const name=document.getElementById('rg-name').value.trim();
+  const email=document.getElementById('rg-email').value.trim();
+  const pass=document.getElementById('rg-pass').value;
+  const pass2=document.getElementById('rg-pass2').value;
+  const errEl=document.getElementById('rg-err');const okEl=document.getElementById('rg-ok');
+  if(!name){errEl.textContent='Ad soyad zorunlu.';errEl.classList.remove('hidden');return;}
+  if(!isValidEmail(email)){errEl.textContent='Geçerli bir e-posta girin.';errEl.classList.remove('hidden');return;}
+  if(pass.length<8){errEl.textContent='Şifre en az 8 karakter olmalı.';errEl.classList.remove('hidden');return;}
+  if(pass!==pass2){errEl.textContent='Şifreler eşleşmiyor.';errEl.classList.remove('hidden');return;}
+  errEl.classList.add('hidden');
+  try{
+    await window.authApi.register(email,pass,name);
+    okEl.classList.remove('hidden');
+  }catch(e){errEl.textContent=authErrorMessage(e);errEl.classList.remove('hidden');}
+}
+
+function renderForgotPassword(){
+  renderAuthShell('Şifremi Unuttum',`
+    <div class="fg"><label>E-posta</label><input type="email" id="fp-email" placeholder="ornek@eposta.com"></div>
+    <div id="fp-err" class="err-msg hidden"></div>
+    <div id="fp-ok" class="ok-msg hidden">Bu e-posta kayıtlıysa bir bağlantı gönderdik.</div>
+    <div class="facts" style="justify-content:stretch"><button class="btn" style="width:100%" onclick="doForgotPassword()">Bağlantı Gönder</button></div>
+    <div style="text-align:center;margin-top:14px;font-size:12px"><span class="btn-t" style="cursor:pointer" onclick="renderLogin()">Girişe dön</span></div>`);
+}
+
+async function doForgotPassword(){
+  const email=document.getElementById('fp-email').value.trim();
+  const errEl=document.getElementById('fp-err');const okEl=document.getElementById('fp-ok');
+  if(!isValidEmail(email)){errEl.textContent='Geçerli bir e-posta girin.';errEl.classList.remove('hidden');return;}
+  errEl.classList.add('hidden');
+  // Enumeration koruması: e-posta kayıtlı olsun ya da olmasın aynı jenerik
+  // mesaj gösterilir, hata detayı kullanıcıya sızdırılmaz.
+  try{await window.authApi.resetPassword(email);}catch(e){/* jenerik mesaj yine de gösterilir */}
+  okEl.classList.remove('hidden');
+}
+
+async function doLogout(){await window.authApi.logout();}
 
 async function loadVehicles(){
   state.vehicles=await API.get('/vehicles');
@@ -55,7 +175,7 @@ function renderLayout(view){
         <div class="sb-logo"><svg width="26" height="26" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#185FA5"/><path d="M8 28L20 14l12 14" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="22" r="3" fill="#fff"/></svg><span>Bakım Takip</span></div>
         ${state.vehicles.length?`<div class="v-sel-wrap"><select class="v-sel" onchange="changeVehicle(this.value)">${opts}</select></div>`:''}
       </div>
-      <nav>${nav.map(n=>`<div class="nav-item ${view===n.id?'active':''}" onclick="navigate('${n.id}')"><span class="ni">${n.icon}</span><span>${n.label}</span></div>`).join('')}</nav>
+      <nav>${nav.map(n=>`<div class="nav-item ${view===n.id?'active':''}" onclick="navigate('${n.id}')"><span class="ni">${n.icon}</span><span>${n.label}</span>${n.id==='dashboard'?`<span class="nav-badge ${warningCount?'':'hidden'}" id="nav-warn-badge">${warningCount}</span>`:''}</div>`).join('')}</nav>
     </div>
     <div class="main" id="main"></div>
   </div>`;
@@ -72,7 +192,7 @@ async function navigate(view,arg){
   else if(view==='settings')renderSettings(el);
 }
 
-function changeVehicle(id){state.selId=parseInt(id);navigate(state.view);}
+function changeVehicle(id){state.selId=id;navigate(state.view);}
 
 async function renderDashboard(el){
   const v=selVehicle();
@@ -81,19 +201,26 @@ async function renderDashboard(el){
   try{
     const logs=await API.get('/maintenance/'+v.id);
     const expenses=await window.api.expenses.list(v.id);
-    const lastOf={};
-    for(const log of [...logs].sort((a,b)=>b.km-a.km))
-      for(const p of log.parts)
-        if(!lastOf[p.key])lastOf[p.key]={km:log.km,date:log.date,brand:p.brand||''};
+    // Parça durumu artık `vehicles/{id}/parts` koleksiyonundan (isActive==true) okunur,
+    // bakım geçmişini (logs) tarayıp çıkarmak yerine — bkz. firebase-adapter.js `parts.listActive`.
+    // remainingKm burada, ekranda anlık hesaplanır; Firestore'a hiç yazılmaz (rules zaten
+    // client'tan bu alanlara yazmayı reddeder). NOT: gerçek push bildirimi (durum warning/overdue'ya
+    // geçtiğinde FCM ile anlık uyarı) Cloud Functions + Blaze (ücretli) plan gerektirir — proje şu an
+    // ücretsiz Spark planında olduğundan bu fazda sadece aşağıdaki ekran-içi rozet üretiliyor.
+    const activeParts=(window.api.parts&&window.api.parts.listActive)?await window.api.parts.listActive(v.id):[];
+    const activeByType={};activeParts.forEach(p=>{activeByType[p.partTypeId]=p;});
     const bl={green:'bg',amber:'ba',red:'br',unknown:'bx'};
     const bl2={green:'İyi',amber:'Yaklaşıyor',red:'Geçti',unknown:'Kayıt Yok'};
     const cards=PARTS.map(p=>{
-      const last=lastOf[p.key];const lkm=last?.km??null;const nkm=lkm!==null?lkm+p.km:null;
-      const prog=lkm!==null?Math.min(100,Math.round(((v.current_km-lkm)/p.km)*100)):0;
-      const st=lkm===null?'unknown':prog>=100?'red':prog>=75?'amber':'green';
+      const ap=activeByType[p.key];
+      if(!ap)return `<div class="pcard unknown"><div class="ph"><span class="pname">${p.name}</span><span class="badge bx">Kayıt Yok</span></div><div class="pkm" style="color:var(--t3);font-style:italic">Henüz kayıt yok</div></div>`;
+      const life=ap.expectedLifeKm??p.km;
+      const remainingKm=life-(v.current_km-ap.installedAtKm);
+      const nkm=ap.installedAtKm+life;
+      const prog=Math.min(100,Math.max(0,Math.round(((v.current_km-ap.installedAtKm)/life)*100)));
+      const st=remainingKm<=0?'red':remainingKm<=life*0.25?'amber':'green';
       return `<div class="pcard ${st}"><div class="ph"><span class="pname">${p.name}</span><span class="badge ${bl[st]}">${bl2[st]}</span></div>
-        ${lkm!==null?`<div class="pkm"><span>${lkm.toLocaleString('tr-TR')} km</span><span>→</span><span class="nx">${nkm.toLocaleString('tr-TR')} km</span></div><div class="pb"><div class="pf ${st}" style="width:${prog}%"></div></div>${last.brand?`<div class="pbrand">${last.brand}</div>`:''}`:
-        `<div class="pkm" style="color:var(--t3);font-style:italic">Henüz kayıt yok</div>`}</div>`;
+        <div class="pkm"><span>${ap.installedAtKm.toLocaleString('tr-TR')} km</span><span>→</span><span class="nx">${nkm.toLocaleString('tr-TR')} km</span></div><div class="pb"><div class="pf ${st}" style="width:${prog}%"></div></div>${ap.brand?`<div class="pbrand">${ap.brand}</div>`:''}</div>`;
     }).join('');
     const dueCards=DUE_TYPES.map(dt=>{
       const latest=expenses.filter(e=>e.type===dt.id&&e.due_date).sort((a,b)=>b.date.localeCompare(a.date))[0];
@@ -108,6 +235,7 @@ async function renderDashboard(el){
     const byCost={};logs.forEach(l=>l.parts.forEach(p=>{byCost[p.name]=(byCost[p.name]||0)+(p.cost||0);}));
     const top=Object.entries(byCost).sort((a,b)=>b[1]-a[1]).slice(0,5);const maxC=top[0]?.[1]||1;
     el.innerHTML=`<div class="vc">
+      <div id="warn-slot"></div>
       <div class="vh-card"><div class="vh-icon">🚗</div><div class="vh-info"><h2>${v.brand} ${v.model}</h2><p>${v.year||''} ${v.engine||''}</p></div><div class="vh-km"><span class="km-v">${v.current_km.toLocaleString('tr-TR')}</span><span class="km-l">km</span></div></div>
       <div class="slabel">Parça Durumları</div>
       <div class="pgrid">${cards}${dueCards}</div>
@@ -116,8 +244,42 @@ async function renderDashboard(el){
         <div class="card"><div class="ctitle">Toplam Masraf</div><div class="etotal">${total.toLocaleString('tr-TR')} ₺</div><div class="ebars">${top.map(([n,c])=>`<div class="erow"><span class="ename">${n}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxC)*100)}%"></div></div><span class="eamt">${c.toLocaleString('tr-TR')} ₺</span></div>`).join('')}</div></div>
       </div>
     </div>`;
+    renderWarningsSummary();
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${e.message}</div></div>`;}
 }
+
+// Dashboard'un üstüne, seçili araçtan bağımsız olarak TÜM araçlardaki parça/sigorta/muayene
+// uyarılarını özetleyen banner. renderDashboard'un geri kalanını beklemesin diye ayrı
+// çalışır: dashboard önce boş bir #warn-slot ile render edilir, bu fonksiyon veriyi
+// getirip slot'u sonradan doldurur. Uyarı yoksa hiçbir şey render etmez (slot boş kalır).
+async function renderWarningsSummary(){
+  if(!window.api.parts||!window.api.parts.listAllWarnings)return;
+  let warnings=[];
+  try{warnings=await window.api.parts.listAllWarnings();}catch(e){return;}
+  warningCount=warnings.length;
+  const badge=document.getElementById('nav-warn-badge');
+  if(badge){badge.textContent=warningCount;badge.classList.toggle('hidden',warningCount===0);}
+  const slot=document.getElementById('warn-slot');
+  if(!slot)return; // kullanıcı bu arada başka bir view'a geçmiş olabilir
+  if(!warnings.length){slot.innerHTML='';return;}
+  const vehicleCount=new Set(warnings.map(w=>w.vehicleId)).size;
+  const rows=warnings.map(w=>{
+    const badgeCls=w.status==='red'?'br':'ba';
+    const badgeLabel=w.status==='red'?'Geçti':'Yaklaşıyor';
+    return `<div class="warn-row ${w.status}" onclick="selectWarningVehicle('${w.vehicleId}')">
+      <span class="badge ${badgeCls}">${badgeLabel}</span>
+      <span class="warn-veh">${w.vehicleLabel}</span>
+      <span class="warn-item">${w.itemLabel}</span>
+      <span class="warn-msg">${w.message}</span>
+    </div>`;
+  }).join('');
+  slot.innerHTML=`<div class="card warn-banner">
+    <div class="ctitle">${vehicleCount} araçta ${warnings.length} uyarı var</div>
+    <div class="warn-list">${rows}</div>
+  </div>`;
+}
+
+function selectWarningVehicle(vehicleId){state.selId=vehicleId;navigate('dashboard');}
 
 let editingLogId=null;
 let editingExpenseId=null;
@@ -203,7 +365,7 @@ async function saveExpense(type){
   const body={type,date,amount,km,due_date,notes};
   try{
     const wasEditing=!!editingExpenseId;
-    if(wasEditing)await window.api.expenses.update(editingExpenseId,body);
+    if(wasEditing)await window.api.expenses.update(editingExpenseId,body,state.selId);
     else await window.api.expenses.create(state.selId,body);
     editingExpenseId=null;
     okEl.classList.remove('hidden');
@@ -236,7 +398,7 @@ async function saveMaint(){
   errEl.classList.add('hidden');
   try{
     const wasEditing=!!editingLogId;
-    if(wasEditing)await API.put('/maintenance/log/'+editingLogId,{km,date,parts,notes,total_cost});
+    if(wasEditing)await API.put('/maintenance/log/'+editingLogId,{km,date,parts,notes,total_cost},state.selId);
     else await API.post('/maintenance/'+state.selId,{km,date,parts,notes,total_cost});
     editingLogId=null;
     await loadVehicles();okEl.classList.remove('hidden');
@@ -250,7 +412,7 @@ async function renderHistory(el){
   el.innerHTML='<div class="vc"><div class="loading">Yükleniyor...</div></div>';
   try{
     const logs=await API.get('/maintenance/'+v.id);
-    const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${l.km.toLocaleString('tr-TR')} km</span><span class="ldate">${l.date}</span></div><div>${l.total_cost?`<span class="lcost">${l.total_cost.toLocaleString('tr-TR')} ₺</span>`:''}<button class="btn-s" onclick="editLog(${l.id})">Düzenle</button><button class="btn-d" onclick="delLog(${l.id})">Sil</button></div></div><div class="lparts">${l.parts.map(p=>`<span class="ptag">${p.name}${p.brand?' · '+p.brand:''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${l.notes}</div>`:''}</div>`).join('')||'<div class="empty">Kayıt yok.</div>';
+    const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${l.km.toLocaleString('tr-TR')} km</span><span class="ldate">${l.date}</span></div><div>${l.total_cost?`<span class="lcost">${l.total_cost.toLocaleString('tr-TR')} ₺</span>`:''}<button class="btn-s" onclick="editLog('${l.id}')">Düzenle</button><button class="btn-d" onclick="delLog('${l.id}')">Sil</button></div></div><div class="lparts">${l.parts.map(p=>`<span class="ptag">${p.name}${p.brand?' · '+p.brand:''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${l.notes}</div>`:''}</div>`).join('')||'<div class="empty">Kayıt yok.</div>';
     el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Bakım Geçmişi</h2><button class="btn" onclick="navigate('add')">+ Bakım Ekle</button></div><div class="llist">${rows}</div></div>`;
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${e.message}</div></div>`;}
 }
@@ -259,7 +421,7 @@ function editLog(id){navigate('add',{type:'bakim',id});}
 
 async function delLog(id){
   if(!confirm('Bu kaydı silmek istiyor musunuz?'))return;
-  await API.del('/maintenance/log/'+id);navigate('history');
+  await API.del('/maintenance/log/'+id,state.selId);navigate('history');
 }
 
 async function renderExpenses(el){
@@ -285,7 +447,7 @@ async function renderExpenses(el){
     const ts=Object.entries(byType).filter(([,c])=>c>0).sort((a,b)=>b[1]-a[1]);const maxT=ts[0]?.[1]||1;
     const recentExp=expenses.map(e=>{
       const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
-      return `<div class="lcard"><div class="lhead"><div><span class="lkm">${label}</span><span class="ldate">${e.date}</span></div><div><span class="lcost">${e.amount.toLocaleString('tr-TR')} ₺</span><button class="btn-s" onclick="editExpense(${e.id})">Düzenle</button><button class="btn-d" onclick="delExpense(${e.id})">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${e.due_date}</span></div>`:''}${e.notes?`<div class="lnotes">${e.notes}</div>`:''}</div>`;
+      return `<div class="lcard"><div class="lhead"><div><span class="lkm">${label}</span><span class="ldate">${e.date}</span></div><div><span class="lcost">${e.amount.toLocaleString('tr-TR')} ₺</span><button class="btn-s" onclick="editExpense('${e.id}')">Düzenle</button><button class="btn-d" onclick="delExpense('${e.id}')">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${e.due_date}</span></div>`:''}${e.notes?`<div class="lnotes">${e.notes}</div>`:''}</div>`;
     }).join('')||'<div class="empty">Kayıt yok.</div>';
     el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Masraf Analizi</h2><button class="btn" onclick='navigate("add",{type:"yakit"})'>+ Masraf Ekle</button></div>
       <div class="scards"><div class="scard"><div class="scard-l">Toplam</div><div class="scard-v">${total.toLocaleString('tr-TR')} ₺</div></div><div class="scard"><div class="scard-l">Bakım Sayısı</div><div class="scard-v">${logs.length}</div></div><div class="scard"><div class="scard-l">Ort / Bakım</div><div class="scard-v">${logs.length?Math.round(logsTotal/logs.length).toLocaleString('tr-TR'):0} ₺</div></div></div>
@@ -310,14 +472,14 @@ function editExpense(id){
 
 async function delExpense(id){
   if(!confirm('Bu masraf kaydını silmek istiyor musunuz?'))return;
-  await window.api.expenses.delete(id);navigate('expenses');
+  await window.api.expenses.delete(id,state.selId);navigate('expenses');
 }
 
 let editingVehicleId=null;
 
 async function renderVehicles(el){
   await loadVehicles();
-  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle(${v.id});navigate('dashboard')"><div class="vci-icon">🚗</div><div class="vci-info"><h3>${v.brand} ${v.model}</h3><p>${v.year||''} ${v.engine||''}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle(${v.id})">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle(${v.id})">Sil</button></div>`).join('');
+  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle('${v.id}');navigate('dashboard')"><div class="vci-icon">🚗</div><div class="vci-info"><h3>${v.brand} ${v.model}</h3><p>${v.year||''} ${v.engine||''}</p><p>${v.current_km.toLocaleString('tr-TR')} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle('${v.id}')">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle('${v.id}')">Sil</button></div>`).join('');
   el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Araçlar</h2><button class="btn" onclick="showAddVehicle()">+ Araç Ekle</button></div><div class="vlist">${cards}</div>
     <div id="add-v-form" class="fcard hidden"><h3 id="v-form-title">Yeni Araç</h3>
       <div class="frow"><div class="fg"><label>Marka *</label><input id="v-brand" placeholder="Volvo"></div><div class="fg"><label>Model *</label><input id="v-model" placeholder="S60"></div></div>
@@ -381,6 +543,7 @@ async function delVehicle(id){
 }
 
 function renderSettings(el){
+  const user=window.authApi.currentUser();
   el.innerHTML=`<div class="vc"><h2 class="vtitle">Ayarlar</h2><div class="fcard"><h3>Veri Yedekleme</h3>
     <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Tüm araç ve bakım verilerini bir JSON dosyasına kaydedebilir ya da önceden alınmış bir yedeği geri yükleyebilirsin.</p>
     <div id="bk-msg" class="ok-msg hidden"></div>
@@ -388,6 +551,10 @@ function renderSettings(el){
       <button class="btn-s" onclick="importBackup()">Yedekten Geri Yükle</button>
       <button class="btn" onclick="exportBackup()">Yedek Al</button>
     </div>
+  </div>
+  <div class="fcard"><h3>Hesap</h3>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:14px">${user?user.email:''}</p>
+    <div class="facts" style="justify-content:flex-start"><button class="btn-s" onclick="doLogout()">Çıkış Yap</button></div>
   </div></div>`;
 }
 
