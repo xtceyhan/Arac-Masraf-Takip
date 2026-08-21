@@ -17,12 +17,12 @@ import {
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
   signOut, sendPasswordResetEmail, sendEmailVerification, updateProfile,
-  EmailAuthProvider, reauthenticateWithCredential, deleteUser,
+  EmailAuthProvider, reauthenticateWithCredential, deleteUser, connectAuthEmulator,
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, collection, doc, getDoc, getDocs,
   addDoc, updateDoc, deleteDoc, setDoc, query, where, writeBatch,
-  terminate, clearIndexedDbPersistence,
+  terminate, clearIndexedDbPersistence, connectFirestoreEmulator,
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // `firebaseConfig`, www/firebase-config.js (klasik <script>, index.html'de bu modülden önce
@@ -55,6 +55,16 @@ try {
 
 const auth = getAuth(app);
 const db = initializeFirestore(app, { localCache: persistentLocalCache() });
+
+// SADECE test amaçlı, opt-in: `?emulator=1` ile açılırsa gerçek projeye hiç dokunmadan
+// Firebase Local Emulator Suite'e bağlanır (localhost'ta, gerçek verinin YANINA değil,
+// tamamen izole sahte bir Auth+Firestore'a). Capacitor native ortamında bu query param
+// hiç oluşmaz, yani üretim/gerçek cihaz davranışını etkilemez. A-Z QA turu için eklendi.
+if (location.hostname === 'localhost' && new URLSearchParams(location.search).get('emulator') === '1') {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8081);
+  console.warn('[TEST] Firebase Emulator\'a bağlandı — bu bir test oturumu, gerçek veri değil.');
+}
 
 // app.js'teki PARTS listesiyle birebir aynı tutulmalı (parça anahtarı + varsayılan değişim
 // km'si). Script yükleme sırası (bu modül app.js'ten ÖNCE çalışır) nedeniyle app.js'teki

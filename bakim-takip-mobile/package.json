@@ -2,7 +2,7 @@
   "name": "bakim-takip-mobile",
   "version": "1.0.0",
   "private": true,
-  "description": "Araç Bakım Takip Uygulaması (Android)",
+  "description": "Benim Taşıtım — Araç Bakım/Masraf Takip Uygulaması (Android)",
   "scripts": {
     "sync": "cap sync",
     "android": "cap open android"

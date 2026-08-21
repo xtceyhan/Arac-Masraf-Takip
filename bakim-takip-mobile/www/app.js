@@ -23,6 +23,60 @@ function fmtNum(n){
   return esc(Number.isFinite(v)?v.toLocaleString('tr-TR'):'—');
 }
 
+// ── Görsel yardımcılar ───────────────────────────────────────────────────────
+// Buradaki üreticiler yalnızca SABİT işaretleme ya da BİZİM hesapladığımız sayılar
+// üretir; hiçbiri kullanıcı verisi almaz. Kullanıcı verisi (marka, model, not…)
+// her zaman çağıran taraftan esc() ile geçirilir — bkz. dosya başındaki not.
+
+// Uygulama ikonu: "gösterge ibresi". Sidebar ve auth ekranı aynı işareti kullanır;
+// kaynak SVG'si icon-src/foreground.svg içinde mipmap üretimi için ayrıca duruyor.
+function logoSvg(size){
+  const s=Number(size)||26;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect width="48" height="48" rx="10" fill="#185FA5"/>
+    <path d="M11 30a13 13 0 0 1 26 0" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
+    <path d="M24 30 L33 18" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
+    <circle cx="24" cy="30" r="3.4" fill="#fff"/>
+  </svg>`;
+}
+
+// Araç siluetti — referans tasarımdaki ürün fotoğrafının yerini tutar.
+// Fotoğraf üretmiyoruz; tek renkli, ince çizgili bir yan profil yeterli.
+function carArt(cls){
+  return `<svg class="${cls}" viewBox="0 0 240 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M12 62V45c0-5 3.5-9.5 8.5-10.8L54 25.5 78 9.5C81 7.5 84.5 6.5 88 6.5h56c4.5 0 8.8 1.7 12 4.8l19.5 18.5 28.5 5.4c7.5 1.4 13 8 13 15.6V62"
+      stroke="#c9ced7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M60 27h108M112 26.5V7" stroke="#dde1e8" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M12 62h30M84 62h72M198 62h29" stroke="#c9ced7" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="63" cy="62" r="13.5" stroke="#c9ced7" stroke-width="3"/>
+    <circle cx="177" cy="62" r="13.5" stroke="#c9ced7" stroke-width="3"/>
+  </svg>`;
+}
+
+// Segmentli sağlık çubuğu (referanstaki "Battery health" göstergesi).
+// pct: kalan ömür yüzdesi (0-100), status: green|amber|red|unknown.
+// Düz progress bar'ın aksine ayrık segmentler basar; dolu segment sayısı
+// yüzdeden, rengi durumdan gelir. İkisi de bizim hesapladığımız değerler.
+function healthBar(pct,status,segs,small){
+  const n=Number(segs)||16;
+  const p=Math.max(0,Math.min(100,Math.round(Number(pct)||0)));
+  const st=['green','amber','red'].includes(status)?status:'';
+  // %0'ın üstündeki her değer en az bir segment doldurur — "biraz kaldı" ile
+  // "hiç kalmadı" ekranda ayırt edilebilsin.
+  const filled=p<=0?0:Math.max(1,Math.round((p/100)*n));
+  let out='';
+  for(let i=0;i<n;i++)out+=`<i class="${i<filled?'on '+st:''}"></i>`;
+  return `<div class="health-bar${small?' sm':''}">${out}</div>`;
+}
+
+// Marka rozeti için baş harf. Kullanıcı verisinden türediği için esc()'ten geçer.
+function initial(s){
+  const c=String(s??'').trim().charAt(0).toUpperCase();
+  return esc(c||'?');
+}
+
+function monthKey(d){return String(d??'').substring(0,7);}
+
 const PARTS=[{key:'motor_yagi',name:'Motor Yağı',km:7000},{key:'yag_filtresi',name:'Yağ Filtresi',km:7000},{key:'hava_filtresi',name:'Hava Filtresi',km:15000},{key:'polen_filtresi',name:'Polen Filtresi',km:15000},{key:'yakit_filtresi',name:'Yakıt Filtresi',km:30000},{key:'triger',name:'Triger Kayışı',km:60000},{key:'devirdaim',name:'Devirdaim Pompası',km:60000},{key:'bujiler',name:'Bujiler',km:40000},{key:'on_balata',name:'Ön Fren Balata',km:40000},{key:'arka_balata',name:'Arka Fren Balata',km:40000},{key:'fren_diski',name:'Fren Diski',km:60000},{key:'antifriz',name:'Antifriz',km:40000},{key:'sanziman_yagi',name:'Şanzıman Yağı',km:60000},{key:'direksiyon_yagi',name:'Direksiyon Yağı',km:40000},{key:'klima_gazi',name:'Klima Gazı',km:40000}];
 
 const EXPENSE_TYPES=[{id:'bakim',label:'Bakım'},{id:'yakit',label:'Yakıt'},{id:'sigorta',label:'Sigorta'},{id:'muayene',label:'Muayene'}];
@@ -132,12 +186,9 @@ function authErrorMessage(e){
 }
 
 function renderAuthShell(title,bodyHtml){
-  document.getElementById('app').innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
-    <div style="width:100%;max-width:380px">
-      <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:24px">
-        <svg width="30" height="30" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#185FA5"/><path d="M8 28L20 14l12 14" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="22" r="3" fill="#fff"/></svg>
-        <span style="font-size:17px;font-weight:500">Bakım Takip</span>
-      </div>
+  document.getElementById('app').innerHTML=`<div class="auth-wrap">
+    <div class="auth-box">
+      <div class="auth-lockup">${logoSvg(32)}<span>Benim Taşıtım</span></div>
       <div class="fcard" style="margin-top:0"><h3>${esc(title)}</h3>${bodyHtml}</div>
     </div>
   </div>`;
@@ -151,7 +202,7 @@ function renderLogin(){
     <div class="fg"><label>Şifre</label><input type="password" id="lg-pass" placeholder="••••••••"></div>
     <div id="lg-err" class="err-msg hidden"></div>
     <div class="facts" style="justify-content:stretch"><button class="btn" style="width:100%" onclick="doLogin()">Giriş Yap</button></div>
-    <div style="display:flex;justify-content:space-between;margin-top:14px;font-size:12px">
+    <div class="auth-links">
       <span class="btn-t" style="cursor:pointer" onclick="renderForgotPassword()">Şifremi Unuttum</span>
       <span class="btn-t" style="cursor:pointer" onclick="renderRegister()">Hesabın yok mu? Kayıt Ol</span>
     </div>`);
@@ -208,8 +259,8 @@ async function doRegister(){
 function renderVerifyEmail(){
   const user=window.authApi.currentUser();
   renderAuthShell('E-postanı Doğrula',`
-    <p style="font-size:13px;color:var(--t2);margin-bottom:6px">Hesabını kullanabilmen için e-posta adresini doğrulaman gerekiyor.</p>
-    <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Doğrulama bağlantısını <strong>${esc(user?user.email:'')}</strong> adresine gönderdik. Bağlantıya tıkladıktan sonra aşağıdaki düğmeye bas.</p>
+    <p class="hint" style="margin-bottom:6px">Hesabını kullanabilmen için e-posta adresini doğrulaman gerekiyor.</p>
+    <p class="hint">Doğrulama bağlantısını <strong>${esc(user?user.email:'')}</strong> adresine gönderdik. Bağlantıya tıkladıktan sonra aşağıdaki düğmeye bas.</p>
     <div id="vf-err" class="err-msg hidden"></div>
     <div id="vf-ok" class="ok-msg hidden"></div>
     <div class="facts" style="justify-content:stretch"><button class="btn" style="width:100%" onclick="doCheckVerified()">Doğruladım, Devam Et</button></div>
@@ -294,16 +345,21 @@ function showActionError(msg){
   box.innerHTML=`<div class="err-msg">${esc(msg)}</div>`;
 }
 
+// `fab:true` olan nav öğesi mobilde (bkz. style.css @media max-width:700px) alt
+// bardaki dolu daireye dönüşür — referans tasarımdaki "öne çıkan aksiyon".
+// Masaüstünde sıradan bir nav satırı olarak kalır.
 function renderLayout(view){
-  const nav=[{id:'dashboard',icon:'▦',label:'Dashboard'},{id:'add',icon:'+',label:'Bakım Ekle'},{id:'history',icon:'◷',label:'Geçmiş'},{id:'expenses',icon:'₺',label:'Masraflar'},{id:'vehicles',icon:'◈',label:'Araçlar'},{id:'settings',icon:'⚙',label:'Ayarlar'}];
+  // label = geniş ekran (sidebar), short = dar ekran (alt bar). İkisi de basılır,
+  // hangisinin görüneceğine style.css karar verir.
+  const nav=[{id:'dashboard',icon:'▦',label:'Genel Bakış',short:'Özet'},{id:'history',icon:'◷',label:'Bakım Geçmişi',short:'Geçmiş'},{id:'add',icon:'+',label:'Kayıt Ekle',short:'Ekle',fab:true},{id:'expenses',icon:'₺',label:'Masraflar',short:'Masraf'},{id:'vehicles',icon:'◈',label:'Araçlar',short:'Araçlar'},{id:'settings',icon:'⚙',label:'Ayarlar',short:'Ayarlar'}];
   const opts=state.vehicles.map(v=>`<option value="${esc(v.id)}" ${v.id===state.selId?'selected':''}>${esc(v.brand)} ${esc(v.model)}</option>`).join('');
   document.getElementById('app').innerHTML=`<div class="layout">
     <div class="sb">
       <div class="sb-top">
-        <div class="sb-logo"><svg width="26" height="26" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#185FA5"/><path d="M8 28L20 14l12 14" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="22" r="3" fill="#fff"/></svg><span>Bakım Takip</span></div>
+        <div class="sb-logo">${logoSvg(26)}<span>Benim Taşıtım</span></div>
         ${state.vehicles.length?`<div class="v-sel-wrap"><select class="v-sel" onchange="changeVehicle(this.value)">${opts}</select></div>`:''}
       </div>
-      <nav>${nav.map(n=>`<div class="nav-item ${view===n.id?'active':''}" onclick="navigate('${n.id}')"><span class="ni">${esc(n.icon)}</span><span>${esc(n.label)}</span>${n.id==='dashboard'?`<span class="nav-badge ${warningCount?'':'hidden'}" id="nav-warn-badge">${esc(warningCount)}</span>`:''}</div>`).join('')}</nav>
+      <nav>${nav.map(n=>`<div class="nav-item ${n.fab?'fab ':''}${view===n.id?'active':''}" data-id="${esc(n.id)}" onclick="navigate('${n.id}')"><span class="ni">${esc(n.icon)}</span><span class="nl">${esc(n.label)}</span><span class="nl-s">${esc(n.short)}</span>${n.id==='dashboard'?`<span class="nav-badge ${warningCount?'':'hidden'}" id="nav-warn-badge">${esc(warningCount)}</span>`:''}</div>`).join('')}</nav>
     </div>
     <div class="main" id="main"></div>
   </div>`;
@@ -324,7 +380,7 @@ function changeVehicle(id){state.selId=id;navigate(state.view);}
 
 async function renderDashboard(el){
   const v=selVehicle();
-  if(!v){el.innerHTML=`<div class="vc"><div class="empty"><p>Araç yok.</p><br><button class="btn" onclick="navigate('vehicles')">Araç Ekle</button></div></div>`;return;}
+  if(!v){el.innerHTML=`<div class="vc"><div class="empty"><p style="font-size:15px;font-weight:600;color:var(--t);margin-bottom:6px">Henüz araç eklemedin</p><p class="hint" style="margin-bottom:18px">Takibe başlamak için önce bir araç ekle.</p><button class="btn" onclick="navigate('vehicles')">Araç Ekle</button></div></div>`;return;}
   el.innerHTML='<div class="vc"><div class="loading">Yükleniyor...</div></div>';
   try{
     const logs=await API.get('/maintenance/'+v.id);
@@ -339,37 +395,86 @@ async function renderDashboard(el){
     const activeByType={};activeParts.forEach(p=>{activeByType[p.partTypeId]=p;});
     const bl={green:'bg',amber:'ba',red:'br',unknown:'bx'};
     const bl2={green:'İyi',amber:'Yaklaşıyor',red:'Geçti',unknown:'Kayıt Yok'};
+    // Parça satırları önce veri olarak hesaplanır; hem kartlar hem de üstteki
+    // metrik ızgarası (sıradaki servis / uyarı sayısı) aynı hesaptan beslensin.
+    let vehWarn=0,vehCrit=0,nextSvc=null;
     const cards=PARTS.map(p=>{
       const ap=activeByType[p.key];
-      if(!ap)return `<div class="pcard unknown"><div class="ph"><span class="pname">${esc(p.name)}</span><span class="badge bx">Kayıt Yok</span></div><div class="pkm" style="color:var(--t3);font-style:italic">Henüz kayıt yok</div></div>`;
+      if(!ap)return `<div class="pcard unknown"><div class="ph"><span class="pname">${esc(p.name)}</span><span class="badge bx">Kayıt Yok</span></div><div class="pempty">Henüz kayıt yok</div>${healthBar(0,'unknown',16)}</div>`;
       const life=ap.expectedLifeKm??p.km;
       const remainingKm=life-(v.current_km-ap.installedAtKm);
       const nkm=ap.installedAtKm+life;
-      const prog=Math.min(100,Math.max(0,Math.round(((v.current_km-ap.installedAtKm)/life)*100)));
+      // Segment çubuğu KALAN ömrü gösterir (referanstaki pil göstergesi gibi),
+      // eski progress bar ise tüketileni gösteriyordu.
+      const remainPct=Math.min(100,Math.max(0,Math.round((remainingKm/life)*100)));
       const st=remainingKm<=0?'red':remainingKm<=life*0.25?'amber':'green';
+      if(st==='red'){vehWarn++;vehCrit++;}else if(st==='amber')vehWarn++;
+      if(nextSvc===null||remainingKm<nextSvc.rem)nextSvc={rem:remainingKm,name:p.name};
+      // Ömrü GEÇMİŞ parça çubuğu boş değil, TAMAMEN kırmızı çizilir: kalan ömür %0
+      // olduğu için boş bırakılsa "Kayıt Yok" kartıyla aynı gri çubuğa dönüşür ve
+      // en kritik durum ekranda en sessiz görünen şey olurdu.
       return `<div class="pcard ${st}"><div class="ph"><span class="pname">${esc(p.name)}</span><span class="badge ${bl[st]}">${esc(bl2[st])}</span></div>
-        <div class="pkm"><span>${fmtNum(ap.installedAtKm)} km</span><span>→</span><span class="nx">${fmtNum(nkm)} km</span></div><div class="pb"><div class="pf ${st}" style="width:${prog}%"></div></div>${ap.brand?`<div class="pbrand">${esc(ap.brand)}</div>`:''}</div>`;
+        <div class="pval"><span class="pv">${esc(remainPct)}<span class="pu">%</span></span><span class="pmeta">kalan ömür</span></div>
+        ${healthBar(st==='red'?100:remainPct,st,16)}
+        <div class="pkm"><span>${fmtNum(ap.installedAtKm)} km</span><span>→</span><span class="nx">${fmtNum(nkm)} km</span></div>${ap.brand?`<div class="pbrand">${esc(ap.brand)}</div>`:''}</div>`;
     }).join('');
     const dueCards=DUE_TYPES.map(dt=>{
       const latest=expenses.filter(e=>e.type===dt.id&&e.due_date).sort((a,b)=>b.date.localeCompare(a.date))[0];
-      if(!latest)return `<div class="pcard unknown"><div class="ph"><span class="pname">${esc(dt.label)}</span><span class="badge bx">Kayıt Yok</span></div><div class="pkm" style="color:var(--t3);font-style:italic">Henüz kayıt yok</div></div>`;
+      if(!latest)return `<div class="pcard unknown"><div class="ph"><span class="pname">${esc(dt.label)}</span><span class="badge bx">Kayıt Yok</span></div><div class="pempty">Henüz kayıt yok</div>${healthBar(0,'unknown',16)}</div>`;
       const days=Math.ceil((new Date(latest.due_date)-new Date())/86400000);
       const st=days<0?'red':days<=30?'amber':'green';
+      if(st==='red'){vehWarn++;vehCrit++;}else if(st==='amber')vehWarn++;
       const stLabel=days<0?'Süresi Geçti':days<=30?'Yaklaşıyor':'İyi';
-      return `<div class="pcard ${st}"><div class="ph"><span class="pname">${esc(dt.label)}</span><span class="badge ${bl[st]}">${esc(stLabel)}</span></div><div class="pkm"><span>Yenileme: ${esc(latest.due_date)}</span></div></div>`;
+      // Poliçe/muayene için "ömür" bir yıl kabul edilir; segment çubuğu kalan günü gösterir.
+      const remainPct=Math.min(100,Math.max(0,Math.round((days/365)*100)));
+      return `<div class="pcard ${st}"><div class="ph"><span class="pname">${esc(dt.label)}</span><span class="badge ${bl[st]}">${esc(stLabel)}</span></div>
+        <div class="pval"><span class="pv">${esc(Math.abs(days))}<span class="pu">gün</span></span><span class="pmeta">${days<0?'gecikti':'kaldı'}</span></div>
+        ${healthBar(st==='red'?100:remainPct,st,16)}
+        <div class="pkm"><span>Yenileme:</span><span class="nx">${esc(latest.due_date)}</span></div></div>`;
     }).join('');
-    const recent=logs.slice(0,4).map(l=>`<div class="hi"><div class="hdot"></div><div class="hinfo"><span class="hkm">${fmtNum(l.km)} km</span><span class="hparts">${esc(l.parts.map(p=>p.name).join(', '))}</span></div><span class="hdate">${esc(l.date)}</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3);padding:8px 0">Kayıt yok</p>';
-    const total=logs.reduce((s,l)=>s+(l.total_cost||0),0);
+    const recent=logs.slice(0,4).map(l=>`<div class="arow" onclick="navigate('history')">
+      <div class="a-ic blue">◷</div>
+      <div class="a-bd"><div class="a-t"><span>${fmtNum(l.km)} km</span><span class="a-time">${esc(l.date)}</span></div>
+      <div class="a-d">${esc(l.parts.map(p=>p.name).join(', '))||'—'}</div></div>
+    </div>`).join('')||'<div class="enone">Henüz bakım kaydı yok.</div>';
+    const logsTotal=logs.reduce((s,l)=>s+(l.total_cost||0),0);
+    const expTotal=expenses.reduce((s,e)=>s+(e.amount||0),0);
+    const total=logsTotal+expTotal;
+    const thisMonth=monthKey(new Date().toISOString());
+    const monthTotal=logs.filter(l=>monthKey(l.date)===thisMonth).reduce((s,l)=>s+(l.total_cost||0),0)
+      +expenses.filter(e=>monthKey(e.date)===thisMonth).reduce((s,e)=>s+(e.amount||0),0);
     const byCost={};logs.forEach(l=>l.parts.forEach(p=>{byCost[p.name]=(byCost[p.name]||0)+(p.cost||0);}));
     const top=Object.entries(byCost).sort((a,b)=>b[1]-a[1]).slice(0,5);const maxC=top[0]?.[1]||1;
+    const stDot=vehCrit?'red':vehWarn?'amber':'green';
+    const stText=vehCrit?vehCrit+' kritik':vehWarn?vehWarn+' uyarı':'Her şey yolunda';
     el.innerHTML=`<div class="vc">
       <div id="warn-slot"></div>
-      <div class="vh-card"><div class="vh-icon">🚗</div><div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div><div class="vh-km"><span class="km-v">${fmtNum(v.current_km)}</span><span class="km-l">km</span></div></div>
+      <div class="vh-card">
+        <div class="vh-top">
+          <div class="vh-badge">${initial(v.brand)}</div>
+          <div class="vh-info"><h2>${esc(v.brand)} ${esc(v.model)}</h2><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div>
+          <span class="vh-state"><i class="dot ${stDot}"></i>${esc(stText)}</span>
+        </div>
+        ${carArt('vh-art')}
+        <div class="vh-foot">
+          <div><span class="km-v">${fmtNum(v.current_km)}</span><span class="km-l">km</span><div class="km-c">Güncel kilometre</div></div>
+          <div style="text-align:right"><span class="km-v" style="font-size:20px">${esc(logs.length)}</span><div class="km-c">bakım kaydı</div></div>
+        </div>
+      </div>
+      <div class="mgrid">
+        <div class="mcard"><div class="mc-h"><span class="mc-ic blue">₺</span><span class="mc-l">Toplam Masraf</span></div><div class="mc-v">${fmtNum(total)}<span class="mc-u">₺</span></div><div class="mc-s"><i class="dot blue"></i>bakım + masraf</div></div>
+        <div class="mcard"><div class="mc-h"><span class="mc-ic green">◷</span><span class="mc-l">Bu Ay</span></div><div class="mc-v">${fmtNum(monthTotal)}<span class="mc-u">₺</span></div><div class="mc-s">${esc(thisMonth)}</div></div>
+        <div class="mcard"><div class="mc-h"><span class="mc-ic amber">◈</span><span class="mc-l">Sıradaki Servis</span></div>
+          <div class="mc-v">${nextSvc?(nextSvc.rem>0?fmtNum(nextSvc.rem):fmtNum(Math.abs(nextSvc.rem))):'—'}${nextSvc?'<span class="mc-u">km</span>':''}</div>
+          <div class="mc-s">${nextSvc?`<i class="dot ${nextSvc.rem<=0?'red':nextSvc.rem<=1000?'amber':'green'}"></i>${esc(nextSvc.name)}${nextSvc.rem<=0?' (geçti)':''}`:'Parça kaydı yok'}</div></div>
+        <div class="mcard"><div class="mc-h"><span class="mc-ic ${vehCrit?'red':vehWarn?'amber':'green'}">⚠</span><span class="mc-l">Uyarı</span></div><div class="mc-v">${esc(vehWarn)}</div><div class="mc-s"><i class="dot ${stDot}"></i>${esc(vehCrit)} kritik</div></div>
+      </div>
       <div class="slabel">Parça Durumları</div>
       <div class="pgrid">${cards}${dueCards}</div>
+      <div class="slabel">Özet</div>
       <div class="bgrid">
-        <div class="card"><div class="ctitle">Son Bakımlar</div>${recent}${logs.length>4?`<button class="btn-t" onclick="navigate('history')">Tümünü gör →</button>`:''}</div>
-        <div class="card"><div class="ctitle">Toplam Masraf</div><div class="etotal">${fmtNum(total)} ₺</div><div class="ebars">${top.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxC)*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')}</div></div>
+        <div class="card"><div class="chead"><div class="ctitle">Son Bakımlar</div>${logs.length>4?`<button class="clink" onclick="navigate('history')">Tümünü gör</button>`:''}</div><div class="alist">${recent}</div></div>
+        <div class="card"><div class="chead"><div class="ctitle">Toplam Masraf</div><button class="clink" onclick="navigate('expenses')">Analiz</button></div><div class="etotal">${fmtNum(total)} ₺</div><div class="ebars">${top.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxC)*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')||'<div class="enone">Parça bazlı masraf kaydı yok.</div>'}</div></div>
       </div>
     </div>`;
     renderWarningsSummary();
@@ -390,20 +495,45 @@ async function renderWarningsSummary(){
   const slot=document.getElementById('warn-slot');
   if(!slot)return; // kullanıcı bu arada başka bir view'a geçmiş olabilir
   if(!warnings.length){slot.innerHTML='';return;}
+  lastWarnings=warnings;
+  paintWarnings();
+}
+
+// Uyarı listesi referanstaki "Recent alerts" kart diline taşındı: ikon kutusu +
+// başlık + sağda rozet + altta açıklama. Uzun listeyi kart boğmasın diye ilk
+// WARN_PREVIEW satır gösterilir, gerisi "Tümünü gör" ile açılır. Bu tamamen
+// görsel bir durum (veri/route state'ine dokunmaz), o yüzden modül değişkeni.
+const WARN_PREVIEW=4;
+let lastWarnings=[];
+let warnExpanded=false;
+
+function toggleAllWarnings(){warnExpanded=!warnExpanded;paintWarnings();}
+
+function paintWarnings(){
+  const slot=document.getElementById('warn-slot');
+  if(!slot)return;
+  const warnings=lastWarnings;
+  if(!warnings.length){slot.innerHTML='';return;}
   const vehicleCount=new Set(warnings.map(w=>w.vehicleId)).size;
-  const rows=warnings.map(w=>{
-    const badgeCls=w.status==='red'?'br':'ba';
-    const badgeLabel=w.status==='red'?'Geçti':'Yaklaşıyor';
-    return `<div class="warn-row ${w.status}" onclick="selectWarningVehicle('${w.vehicleId}')">
-      <span class="badge ${badgeCls}">${esc(badgeLabel)}</span>
-      <span class="warn-veh">${esc(w.vehicleLabel)}</span>
-      <span class="warn-item">${esc(w.itemLabel)}</span>
-      <span class="warn-msg">${esc(w.message)}</span>
+  const shown=warnExpanded?warnings:warnings.slice(0,WARN_PREVIEW);
+  const rows=shown.map(w=>{
+    const st=w.status==='red'?'red':'amber';
+    const badgeCls=st==='red'?'br':'ba';
+    const badgeLabel=st==='red'?'Geçti':'Yaklaşıyor';
+    return `<div class="arow" onclick="selectWarningVehicle('${w.vehicleId}')">
+      <div class="a-ic ${st}">⚠</div>
+      <div class="a-bd">
+        <div class="a-t"><span>${esc(w.itemLabel)}</span><span class="badge ${badgeCls}">${esc(badgeLabel)}</span></div>
+        <div class="a-d"><strong>${esc(w.vehicleLabel)}</strong> · ${esc(w.message)}</div>
+      </div>
     </div>`;
   }).join('');
+  const more=warnings.length>WARN_PREVIEW
+    ?`<button class="clink" onclick="toggleAllWarnings()">${warnExpanded?'Daha az':'Tümünü gör ('+esc(warnings.length)+')'}</button>`
+    :'';
   slot.innerHTML=`<div class="card warn-banner">
-    <div class="ctitle">${esc(vehicleCount)} araçta ${esc(warnings.length)} uyarı var</div>
-    <div class="warn-list">${rows}</div>
+    <div class="chead"><div class="ctitle">${esc(vehicleCount)} araçta ${esc(warnings.length)} uyarı</div>${more}</div>
+    <div class="alist">${rows}</div>
   </div>`;
 }
 
@@ -434,7 +564,9 @@ async function renderAdd(el,arg){
     }
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">Kayıt yüklenemedi: ${esc(e.message)}</div></div>`;return;}
   const typeLabel=EXPENSE_TYPES.find(t=>t.id===type)?.label||'Bakım';
-  el.innerHTML=`<div class="vc"><h2 class="vtitle">${esc(isEdit?typeLabel+' Kaydını Düzenle':'Masraf Ekle')} — ${esc(v.brand)} ${esc(v.model)}</h2>
+  el.innerHTML=`<div class="vc">
+    <div class="vtitle-wrap"><h2 class="vtitle">${esc(isEdit?typeLabel+' Kaydını Düzenle':'Kayıt Ekle')}</h2>
+    <div class="vsub">${esc(v.brand)} ${esc(v.model)} · ${fmtNum(v.current_km)} km</div></div>
     ${isEdit?'':`<div class="etabs">${EXPENSE_TYPES.map(t=>`<div class="etab ${type===t.id?'active':''}" onclick='navigate("add",{type:"${t.id}"})'>${esc(t.label)}</div>`).join('')}</div>`}
     <div id="add-form-body"></div>
   </div>`;
@@ -448,6 +580,7 @@ function renderMaintForm(body,log){
   const checkedKeys=new Set((log?.parts||[]).filter(p=>!String(p.key).startsWith('custom_')).map(p=>p.key));
   const customParts=(log?.parts||[]).filter(p=>String(p.key).startsWith('custom_'));
   body.innerHTML=`<div class="fcard">
+    <h3>Bakım Bilgileri</h3>
     <div class="frow"><div class="fg"><label>Kilometre *</label><input type="number" id="m-km" value="${esc(log?log.km:v.current_km)}"></div><div class="fg"><label>Tarih *</label><input type="date" id="m-date" value="${esc(log?log.date:new Date().toISOString().split('T')[0])}"></div><div class="fg"><label>Toplam Tutar (₺)</label><input type="number" id="m-cost" placeholder="0" min="0" value="${esc(log?.total_cost||'')}"></div></div>
     <div class="fg"><label>Değiştirilen Parçalar</label><div class="pcl">${PARTS.map(p=>{
       const checked=checkedKeys.has(p.key);
@@ -471,7 +604,9 @@ function renderMaintForm(body,log){
 function renderExpenseForm(body,exp,type){
   const showKm=type==='yakit';
   const showDue=type==='sigorta'||type==='muayene';
+  const heads={yakit:'Yakıt Kaydı',sigorta:'Sigorta Kaydı',muayene:'Muayene Kaydı'};
   body.innerHTML=`<div class="fcard">
+    <h3>${esc(heads[type]||'Masraf Kaydı')}</h3>
     <div class="frow">
       <div class="fg"><label>Tarih *</label><input type="date" id="e-date" value="${esc(exp?.date||new Date().toISOString().split('T')[0])}"></div>
       <div class="fg"><label>Tutar (₺) *</label><input type="number" id="e-amount" min="0" value="${esc(exp?.amount??'')}"></div>
@@ -545,8 +680,8 @@ async function renderHistory(el){
   el.innerHTML='<div class="vc"><div class="loading">Yükleniyor...</div></div>';
   try{
     const logs=await API.get('/maintenance/'+v.id);
-    const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${fmtNum(l.km)} km</span><span class="ldate">${esc(l.date)}</span></div><div>${l.total_cost?`<span class="lcost">${fmtNum(l.total_cost)} ₺</span>`:''}<button class="btn-s" onclick="editLog('${l.id}')">Düzenle</button><button class="btn-d" onclick="delLog('${l.id}')">Sil</button></div></div><div class="lparts">${l.parts.map(p=>`<span class="ptag">${esc(p.name)}${p.brand?' · '+esc(p.brand):''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${esc(l.notes)}</div>`:''}</div>`).join('')||'<div class="empty">Kayıt yok.</div>';
-    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Bakım Geçmişi</h2><button class="btn" onclick="navigate('add')">+ Bakım Ekle</button></div><div class="llist">${rows}</div></div>`;
+    const rows=logs.map(l=>`<div class="lcard"><div class="lhead"><div><span class="lkm">${fmtNum(l.km)} km</span><span class="ldate">${esc(l.date)}</span></div><div class="lacts">${l.total_cost?`<span class="lcost">${fmtNum(l.total_cost)} ₺</span>`:''}<button class="btn-s" onclick="editLog('${l.id}')">Düzenle</button><button class="btn-d" onclick="delLog('${l.id}')">Sil</button></div></div><div class="lparts">${l.parts.map(p=>`<span class="ptag">${esc(p.name)}${p.brand?' · '+esc(p.brand):''}</span>`).join('')}</div>${l.notes?`<div class="lnotes">${esc(l.notes)}</div>`:''}</div>`).join('')||'<div class="empty">Henüz bakım kaydı yok.</div>';
+    el.innerHTML=`<div class="vc"><div class="vheader"><div class="vtitle-wrap"><h2 class="vtitle">Bakım Geçmişi</h2><div class="vsub">${esc(v.brand)} ${esc(v.model)} · ${esc(logs.length)} kayıt</div></div><button class="btn" onclick="navigate('add')">+ Bakım Ekle</button></div><div class="llist">${rows}</div></div>`;
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${esc(e.message)}</div></div>`;}
 }
 
@@ -586,16 +721,26 @@ async function renderExpenses(el){
     const ts=Object.entries(byType).filter(([,c])=>c>0).sort((a,b)=>b[1]-a[1]);const maxT=ts[0]?.[1]||1;
     const recentExp=expenses.map(e=>{
       const label=EXPENSE_TYPES.find(t=>t.id===e.type)?.label||'Diğer';
-      return `<div class="lcard"><div class="lhead"><div><span class="lkm">${esc(label)}</span><span class="ldate">${esc(e.date)}</span></div><div><span class="lcost">${fmtNum(e.amount)} ₺</span><button class="btn-s" onclick="editExpense('${e.id}')">Düzenle</button><button class="btn-d" onclick="delExpense('${e.id}')">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${esc(e.due_date)}</span></div>`:''}${e.notes?`<div class="lnotes">${esc(e.notes)}</div>`:''}</div>`;
-    }).join('')||'<div class="empty">Kayıt yok.</div>';
-    el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Masraf Analizi</h2><button class="btn" onclick='navigate("add",{type:"yakit"})'>+ Masraf Ekle</button></div>
-      <div class="scards"><div class="scard"><div class="scard-l">Toplam</div><div class="scard-v">${fmtNum(total)} ₺</div></div><div class="scard"><div class="scard-l">Bakım Sayısı</div><div class="scard-v">${esc(logs.length)}</div></div><div class="scard"><div class="scard-l">Ort / Bakım</div><div class="scard-v">${logs.length?fmtNum(Math.round(logsTotal/logs.length)):'0'} ₺</div></div></div>
-      <div class="two">
-        <div class="card"><div class="ctitle">Yıla Göre</div><div class="ebars">${ys.map(([y,c])=>`<div class="erow"><span class="ename">${esc(y)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/(total||1))*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
-        <div class="card"><div class="ctitle">Parçaya Göre</div><div class="ebars">${ps.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxP)*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')||'<p style="font-size:13px;color:var(--t3)">Veri yok</p>'}</div></div>
+      return `<div class="lcard"><div class="lhead"><div><span class="lkm">${esc(label)}</span><span class="ldate">${esc(e.date)}</span></div><div class="lacts"><span class="lcost">${fmtNum(e.amount)} ₺</span><button class="btn-s" onclick="editExpense('${e.id}')">Düzenle</button><button class="btn-d" onclick="delExpense('${e.id}')">Sil</button></div></div>${e.due_date?`<div class="lparts"><span class="ptag">Yenileme: ${esc(e.due_date)}</span></div>`:''}${e.notes?`<div class="lnotes">${esc(e.notes)}</div>`:''}</div>`;
+    }).join('')||'<div class="empty">Henüz yakıt / sigorta / muayene kaydı yok.</div>';
+    // Metrik ızgarası dashboard ile aynı dili konuşur: ikon + etiket + büyük sayı + alt bilgi.
+    const thisYear=String(new Date().getFullYear());
+    const yearTotal=byYear[thisYear]||0;
+    const avg=logs.length?Math.round(logsTotal/logs.length):0;
+    el.innerHTML=`<div class="vc"><div class="vheader"><div class="vtitle-wrap"><h2 class="vtitle">Masraf Analizi</h2><div class="vsub">${esc(v.brand)} ${esc(v.model)}</div></div><button class="btn" onclick='navigate("add",{type:"yakit"})'>+ Masraf Ekle</button></div>
+      <div class="mgrid">
+        <div class="mcard"><div class="mc-h"><span class="mc-ic blue">₺</span><span class="mc-l">Toplam</span></div><div class="mc-v">${fmtNum(total)}<span class="mc-u">₺</span></div><div class="mc-s"><i class="dot blue"></i>tüm zamanlar</div></div>
+        <div class="mcard"><div class="mc-h"><span class="mc-ic green">◷</span><span class="mc-l">${esc(thisYear)}</span></div><div class="mc-v">${fmtNum(yearTotal)}<span class="mc-u">₺</span></div><div class="mc-s">${total?esc(Math.round((yearTotal/total)*100))+'% toplam içinde':'—'}</div></div>
+        <div class="mcard"><div class="mc-h"><span class="mc-ic amber">◈</span><span class="mc-l">Bakım Sayısı</span></div><div class="mc-v">${esc(logs.length)}</div><div class="mc-s">${esc(expenses.length)} ek masraf kaydı</div></div>
+        <div class="mcard"><div class="mc-h"><span class="mc-ic">≈</span><span class="mc-l">Ort / Bakım</span></div><div class="mc-v">${fmtNum(avg)}<span class="mc-u">₺</span></div><div class="mc-s">bakım başına ortalama</div></div>
       </div>
-      <div class="card" style="margin-top:12px"><div class="ctitle">Türe Göre</div><div class="ebars">${ts.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxT)*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')}</div></div>
-      <div class="slabel" style="margin-top:20px">Yakıt / Sigorta / Muayene Kayıtları</div>
+      <div class="slabel">Dağılım</div>
+      <div class="two">
+        <div class="card"><div class="ctitle">Yıla Göre</div><div class="ebars">${ys.map(([y,c])=>`<div class="erow"><span class="ename">${esc(y)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/(total||1))*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')||'<div class="enone">Veri yok</div>'}</div></div>
+        <div class="card"><div class="ctitle">Parçaya Göre</div><div class="ebars">${ps.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxP)*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')||'<div class="enone">Veri yok</div>'}</div></div>
+      </div>
+      <div class="card" style="margin-top:12px"><div class="ctitle">Türe Göre</div><div class="ebars">${ts.map(([n,c])=>`<div class="erow"><span class="ename">${esc(n)}</span><div class="ebar"><div class="efill" style="width:${Math.round((c/maxT)*100)}%"></div></div><span class="eamt">${fmtNum(c)} ₺</span></div>`).join('')||'<div class="enone">Veri yok</div>'}</div></div>
+      <div class="slabel">Yakıt / Sigorta / Muayene Kayıtları</div>
       <div class="llist">${recentExp}</div>
     </div>`;
   }catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">${esc(e.message)}</div></div>`;}
@@ -630,8 +775,22 @@ async function renderVehicles(el){
   // hata verdiğinde (ör. oturum düşmüş, ağ yok) kullanıcı boş ekran görüyordu.
   try{await loadVehicles();}
   catch(e){el.innerHTML=`<div class="vc"><div class="err-msg">Araçlar yüklenemedi: ${esc(e.message)}</div></div>`;return;}
-  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle('${v.id}');navigate('dashboard')"><div class="vci-icon">🚗</div><div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p><p>${fmtNum(v.current_km)} km</p></div><button class="btn-s" onclick="event.stopPropagation();showEditVehicle('${v.id}')">Düzenle</button><button class="btn-d" onclick="event.stopPropagation();delVehicle('${v.id}')">Sil</button></div>`).join('');
-  el.innerHTML=`<div class="vc"><div class="vheader"><h2 class="vtitle">Araçlar</h2><button class="btn" onclick="showAddVehicle()">+ Araç Ekle</button></div><div class="vlist">${cards}</div>
+  // Referanstaki "hero görselli" araç kartının fotoğrafsız karşılığı: marka baş
+  // harfi rozeti + arka planda soluk araç silueti.
+  const cards=state.vehicles.map(v=>`<div class="vci ${v.id===state.selId?'sel':''}" onclick="changeVehicle('${v.id}');navigate('dashboard')">
+    ${carArt('vci-art')}
+    <div class="vci-top">
+      <div class="vci-badge">${initial(v.brand)}</div>
+      <div class="vci-info"><h3>${esc(v.brand)} ${esc(v.model)}</h3><p>${esc(v.year||'')} ${esc(v.engine||'')}</p></div>
+      ${v.id===state.selId?'<span class="badge bg">Seçili</span>':''}
+    </div>
+    <div class="vci-km">${fmtNum(v.current_km)}<small>km</small></div>
+    <div class="vci-acts">
+      <button class="btn-s" onclick="event.stopPropagation();showEditVehicle('${v.id}')">Düzenle</button>
+      <button class="btn-d" onclick="event.stopPropagation();delVehicle('${v.id}')">Sil</button>
+    </div>
+  </div>`).join('')||'<div class="empty">Henüz araç eklemedin.</div>';
+  el.innerHTML=`<div class="vc"><div class="vheader"><div class="vtitle-wrap"><h2 class="vtitle">Araçlar</h2><div class="vsub">${esc(state.vehicles.length)} araç kayıtlı</div></div><button class="btn" onclick="showAddVehicle()">+ Araç Ekle</button></div><div class="vlist">${cards}</div>
     <div id="add-v-form" class="fcard hidden"><h3 id="v-form-title">Yeni Araç</h3>
       <div class="frow"><div class="fg"><label>Marka *</label><input id="v-brand" placeholder="Volvo"></div><div class="fg"><label>Model *</label><input id="v-model" placeholder="S60"></div></div>
       <div class="frow"><div class="fg"><label>Yıl</label><input id="v-year" type="number" placeholder="2011"></div><div class="fg"><label>Motor</label><input id="v-engine" placeholder="1.6 T4"></div></div>
@@ -703,9 +862,10 @@ async function delVehicle(id){
 
 function renderSettings(el){
   const user=window.authApi.currentUser();
-  el.innerHTML=`<div class="vc"><h2 class="vtitle">Ayarlar</h2><div class="fcard"><h3>Veri Yedekleme</h3>
-    <p style="font-size:13px;color:var(--t2);margin-bottom:8px">Tüm araç ve bakım verilerini bir JSON dosyasına kaydedebilir ya da önceden alınmış bir yedeği geri yükleyebilirsin.</p>
-    <p style="font-size:12px;color:var(--t3);margin-bottom:14px">⚠ Yedek dosyası tüm harcama kayıtlarını <strong>şifresiz düz metin</strong> olarak içerir. Paylaşırken ve buluta yüklerken dikkatli ol.</p>
+  el.innerHTML=`<div class="vc"><h2 class="vtitle">Ayarlar</h2>
+  <div class="fcard" style="margin-top:0"><h3>Veri Yedekleme</h3>
+    <p class="hint" style="margin-bottom:6px">Tüm araç ve bakım verilerini bir JSON dosyasına kaydedebilir ya da önceden alınmış bir yedeği geri yükleyebilirsin.</p>
+    <p class="hint">⚠ Yedek dosyası tüm harcama kayıtlarını <strong>şifresiz düz metin</strong> olarak içerir. Paylaşırken ve buluta yüklerken dikkatli ol.</p>
     <div id="bk-msg" class="ok-msg hidden"></div>
     <div class="facts" style="justify-content:flex-start">
       <button class="btn-s" onclick="importBackup()">Yedekten Geri Yükle</button>
@@ -713,11 +873,14 @@ function renderSettings(el){
     </div>
   </div>
   <div class="fcard"><h3>Hesap</h3>
-    <p style="font-size:13px;color:var(--t2);margin-bottom:14px">${esc(user?user.email:'')}</p>
+    <div class="arow" style="cursor:default;border-bottom:none;padding-top:0">
+      <div class="a-ic blue">${initial(user&&user.email)}</div>
+      <div class="a-bd"><div class="a-t"><span>${esc(user?user.email:'')}</span></div><div class="a-d">Oturum açık</div></div>
+    </div>
     <div class="facts" style="justify-content:flex-start"><button class="btn-s" onclick="doLogout()">Çıkış Yap</button></div>
-    <div style="border-top:1px solid var(--bd,#e5e5e5);margin:18px 0 14px"></div>
-    <h3 style="color:#b3261e">Hesabımı Sil</h3>
-    <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Tüm araçların, masrafların, bakım kayıtların ve hesabın <strong>kalıcı olarak</strong> silinecek. Bu işlem geri alınamaz ve verilerin kurtarılamaz. Silmeden önce "Yedek Al" ile bir kopya çıkarabilirsin.</p>
+    <div class="hr"></div>
+    <h3 style="color:var(--red)">Hesabımı Sil</h3>
+    <p class="hint">Tüm araçların, masrafların, bakım kayıtların ve hesabın <strong>kalıcı olarak</strong> silinecek. Bu işlem geri alınamaz ve verilerin kurtarılamaz. Silmeden önce "Yedek Al" ile bir kopya çıkarabilirsin.</p>
     <div class="facts" style="justify-content:flex-start"><button class="btn-d" onclick="showDeleteAccount()">Hesabımı Sil</button></div>
     <div id="da-form" class="hidden" style="margin-top:14px">
       <div class="fg"><label>Devam etmek için şifreni gir</label><input type="password" id="da-pass" placeholder="••••••••"></div>
