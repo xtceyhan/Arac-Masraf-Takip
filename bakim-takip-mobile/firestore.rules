@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // E-posta doğrulaması ZORUNLU sadece YAZMA için — okuma isSignedIn() ile kalır ki
+    // doğrulanmamış bir kullanıcı kilitlenmesin, sadece veri yazamasın. Güvenlik
+    // Denetim Raporu Y-2: bu kontrol olmadan sınırsız, doğrulamasız hesap açılıp
+    // sınırsız yazma yapılabiliyor (kota tükenmesi / DoS).
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // NOT (Güvenlik Denetim Raporu B-3): Bu koleksiyonlar yol-kapsamlı (`match
+    // /vehicles/{vehicleId}/expenses/{expenseId}`) eşleştiriliyor, recursive wildcard
+    // DEĞİL — bu yüzden istemci tarafı `collectionGroup()` sorguları bu kurallarla
+    // yetkilendirilemez ve reddedilir (indexes.json'daki COLLECTION_GROUP index'ler
+    // sadece Admin SDK/Cloud Functions içindir, onlar rules'u bypass eder). İleride
+    // istemciye bir "tüm araçlardaki X" sorgusu eklenirse, ayrı bir
+    // `match /{path=**}/expenses/{expenseId}` kuralı GEREKİR ve o kural da aynı
+    // `resource.data.ownerId == request.auth.uid` şartını taşımalı + sorguya
+    // `where('ownerId','==',uid())` filtresi eklenmelidir — aksi halde kullanıcılar
+    // arası okuma açığı doğar.
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['uid','email','displayName','createdAt'])
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80;
+
+      // Sadece displayName değiştirilebilir — email/uid/createdAt sabit.
+      allow update: if isSignedIn() && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80;
+
+      // Hesap silme akışı: kullanıcı yeniden kimlik doğrulamadan sonra kendi profil
+      // dokümanını silebilir (client tarafı, bkz. app.js deleteAccount). Tam sunucu
+      // taraflı cascade silme (Cloud Function) Blaze plan gerektirdiği için ayrı bir
+      // karar/faz — bkz. security-audit-report.md Y-4.
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /part_types/{partTypeId} {
+      allow read: if isSignedIn();
+      allow write: if false; // sadece Admin SDK / Console günceller
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow create, delete: if false; // sadece Cloud Function/Admin SDK oluşturur
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isVerified() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+             ['ownerId','brand','model','year','engine','purchase_km','current_km','created_at'])
+        && request.resource.data.brand is string && request.resource.data.brand.size() <= 60
+        && request.resource.data.model is string && request.resource.data.model.size() <= 60
+        && request.resource.data.current_km is number
+        && request.resource.data.current_km >= 0 && request.resource.data.current_km <= 5000000
+        && request.resource.data.purchase_km is number
+        && request.resource.data.purchase_km >= 0 && request.resource.data.purchase_km <= 5000000;
+
+      // ownerId update'te değiştirilemez. current_km hem tam form güncellemesinde
+      // hem de tek alanlık batch.update({current_km}) yazımında (masraf/bakım kaydı
+      // sırasında km ilerlediğinde) kullanılıyor — ikisi de bu kuralı geçer.
+      allow update: if isVerified()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.keys().hasOnly(
+             ['ownerId','brand','model','year','engine','purchase_km','current_km','created_at'])
+        && request.resource.data.current_km is number
+        && request.resource.data.current_km >= 0 && request.resource.data.current_km <= 5000000;
+
+      match /expenses/{expenseId} {
+        allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+        allow delete: if isVerified() && resource.data.ownerId == request.auth.uid;
+
+        // Y-3 düzeltmesi: update artık request.resource.data'yı (yazımdan SONRAKİ
+        // doküman) da kontrol ediyor — ownerId/vehicleId'nin kardeş kurallardaki
+        // (vehicles, parts) gibi değişmez olmasını sağlar. Önceki hâlde bu eksikti:
+        // bir kullanıcı kendi masraf kaydını başka birinin uid'siyle damgalayabiliyordu.
+        allow update: if isVerified()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.vehicleId == resource.data.vehicleId
+          && request.resource.data.keys().hasOnly(
+               ['ownerId','vehicleId','category','amount','date','km','notes','meta','created_at'])
+          && request.resource.data.amount is number
+          && request.resource.data.notes is string && request.resource.data.notes.size() <= 500;
+
+        allow create: if isVerified()
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.vehicleId == vehicleId
+          && request.resource.data.category in ['bakim','yakit','sigorta','muayene']
+          && request.resource.data.keys().hasOnly(
+               ['ownerId','vehicleId','category','amount','date','km','notes','meta','created_at'])
+          && request.resource.data.amount is number
+          && request.resource.data.notes is string && request.resource.data.notes.size() <= 500
+          && get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.ownerId
+             == request.auth.uid;
+      }
+
+      match /parts/{partId} {
+        allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+        allow delete: if isVerified() && resource.data.ownerId == request.auth.uid;
+
+        // O-1 düzeltmesi: create de update ile aynı korumayı taşıyor artık —
+        // remainingKm/remainingMonths/status/notifiedStatus alanları sadece Admin
+        // SDK tarafından (Cloud Function) yazılabilir, client create'te de bu
+        // alanları asla göndermemeli. Önceki hâlde bu yasak sadece update'teydi;
+        // uygulamanın normal akışı (writePartChanges) her zaman YENİ doküman açtığı
+        // için (create), pratikte hiç korunmuyordu.
+        allow create: if isVerified()
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.vehicleId == vehicleId
+          && request.resource.data.keys().hasOnly(
+               ['vehicleId','ownerId','partTypeId','partTypeLabel','brand','installedAtKm',
+                'installedAtDate','expectedLifeKm','partCost','relatedExpenseId','isActive',
+                'replacedByPartId','created_at'])
+          && !request.resource.data.keys()
+               .hasAny(['remainingKm','remainingMonths','status','notifiedStatus'])
+          && get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.ownerId
+             == request.auth.uid;
+
+        // update tarafı doğruydu (Güvenlik Denetim Raporu O-1 ile manuel simüle
+        // edildi), dokunulmadı — diff().affectedKeys() hem eklenen hem değişen hem
+        // silinen alanı yakalıyor.
+        allow update: if isVerified()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['remainingKm', 'remainingMonths', 'status', 'notifiedStatus']);
+      }
+    }
+  }
+}
