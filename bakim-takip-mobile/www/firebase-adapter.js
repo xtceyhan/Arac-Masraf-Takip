@@ -12,12 +12,17 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import {
+  initializeAppCheck, ReCaptchaV3Provider,
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app-check.js";
+import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
   signOut, sendPasswordResetEmail, sendEmailVerification, updateProfile,
+  EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, collection, doc, getDoc, getDocs,
   addDoc, updateDoc, deleteDoc, setDoc, query, where, writeBatch,
+  terminate, clearIndexedDbPersistence,
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // `firebaseConfig`, www/firebase-config.js (klasik <script>, index.html'de bu modülden önce
@@ -25,6 +30,29 @@ import {
 // sayfanın gerçek global (Realm) kapsamıdır, bu yüzden buradan doğrudan erişilebilir —
 // firebase-config.js'e dokunulmadı (elle değiştirilmemesi istendi).
 const app = initializeApp(firebaseConfig);
+
+// App Check (Güvenlik Denetim Raporu Y-2a) — initializeApp'tan HEMEN sonra, getAuth ve
+// getFirestore'dan ÖNCE kurulur: App Check token sağlayıcısı en erken başlatılmalı ki
+// sonraki Auth/Firestore istekleri token'ı taşıyabilsin.
+//
+// Site key PUBLIC'tir (reCAPTCHA v3 site key'leri istemciye gömülmek üzere tasarlanmıştır),
+// gizli bir değer değildir — firebase-config.js'teki API key ile aynı kategoridedir.
+//
+// Firebase Console'da Firestore ve Auth API'leri şu an "Unenforced" (izleme) modunda:
+// önce gerçek trafiğin metrikleri toplanır, mevcut kullanıcıları kilitlememek için
+// enforcement sonradan açılır (raporun Y-2 maddesindeki sıralama).
+try {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LcLU5EtAAAAAIzmTflIAmVu9tYoHgXuy2489DGm'),
+    isTokenAutoRefreshEnabled: true,
+  });
+} catch (e) {
+  // App Check kurulamazsa (ör. reCAPTCHA script'i yüklenemedi) uygulama çalışmaya devam
+  // etmeli: enforcement kapalı olduğu için istekler yine kabul edilir. Enforcement
+  // açıldığında bu durum sessiz bir tam kesintiye dönüşür — bu yüzden konsola yazıyoruz.
+  console.warn('App Check başlatılamadı:', e);
+}
+
 const auth = getAuth(app);
 const db = initializeFirestore(app, { localCache: persistentLocalCache() });
 
@@ -182,9 +210,35 @@ window.api={
       await batch.commit();
       return {id};
     },
+    // O-4: bir bakım kaydı silinirken, o kayıtla birlikte açılmış parça dokümanları da
+    // ele alınmalı. Eskiden sadece expense dokümanı siliniyordu; parts tarafında
+    // isActive:true kalan doküman yüzünden dashboard, artık var olmayan bir bakıma
+    // dayanarak parçayı "takılı" göstermeye devam ediyordu — yani uygulamanın asıl işlevi
+    // (doğru bakım uyarısı) bozuluyordu.
+    //
+    // Parça dokümanları SİLİNMEZ, isActive:false ile pasifleştirilir: replacedByPartId
+    // zinciri geçmişteki diğer kayıtlara bağlı, silmek o zinciri kopartır.
+    // NOT: bu, "bir önceki parçayı tekrar aktif et" işlemini yapmaz — o, değişim
+    // zincirinin geri sarılması demek ve ayrı bir tasarım gerektiriyor; bilinçli olarak
+    // kapsam dışı. Sonuç: parça "Kayıt Yok" durumuna döner, yanlış "takılı" bilgisi vermez.
     async deleteLog(id,vehicleId){
       if(!vehicleId)throw new Error('Araç bilgisi eksik');
-      await deleteDoc(doc(db,'vehicles',vehicleId,'expenses',id));
+      const expenseRef=doc(db,'vehicles',vehicleId,'expenses',id);
+      const expenseSnap=await getDoc(expenseRef);
+      const data=expenseSnap.exists()?expenseSnap.data():null;
+      const partIds=(data&&data.meta&&data.meta.bakim&&data.meta.bakim.partChangeIds)||[];
+      // Var olmayan bir dokümana batch.update() TÜM batch'i düşürür, bu yüzden önce
+      // varlık kontrolü yapılıyor (maintenance.list de aynı savunmayı uyguluyor).
+      const existing=[];
+      for(const pid of partIds){
+        const pRef=doc(db,'vehicles',vehicleId,'parts',pid);
+        const pSnap=await getDoc(pRef);
+        if(pSnap.exists()&&pSnap.data().isActive!==false)existing.push(pRef);
+      }
+      const batch=writeBatch(db);
+      existing.forEach(pRef=>batch.update(pRef,{isActive:false,updated_at:new Date().toISOString()}));
+      batch.delete(expenseRef);
+      await batch.commit();
       return {success:true};
     },
   },
@@ -291,23 +345,64 @@ window.api={
     },
   },
   backup:{
+    // O-6 — üç ayrı düzeltme:
+    //
+    // (a) `success` artık GERÇEK yazma sonucundan üretiliyor. Eski hâl koşulsuz
+    //     `{success:true}` döndürüyordu; oysa `a.download` + `a.click()` blob indirmesi
+    //     Android WebView'de bir DownloadListener kaydedilmediği sürece sessizce hiçbir
+    //     şey yapmaz. Kullanıcı yıllarca "yedeğim var" sanıp aslında hiç yedeği olmayabilirdi.
+    //     Çözüm: native platformda @capacitor/filesystem eklentisiyle gerçek dosya yazımı.
+    //     Eklentiye erişim `Capacitor.nativePromise` üzerinden yapılıyor — bu proje
+    //     bundler kullanmıyor (www/*.js doğrudan tarayıcıya veriliyor), bu yüzden
+    //     `import { Filesystem } from '@capacitor/filesystem'` bare specifier'ı çözülemezdi.
+    //     `nativePromise`, eklentinin JS sarmalayıcısının da altta çağırdığı köprüdür ve
+    //     native runtime tarafından enjekte edilir; yokluğu = tarayıcıda çalışıyoruz demek.
+    // (b) `ownerId` yedekten çıkarıldı — geri yüklemede zaten oturumdaki uid kullanılacak,
+    //     kullanıcının Firebase uid'sinin düz metin dosyada dolaşmasına gerek yok.
+    // (c) Dosyanın şifresiz olduğu uyarısı Ayarlar ekranında gösteriliyor (app.js).
     async export(){
-      const vehicles=await window.api.vehicles.list();
+      const strip=o=>{const {ownerId,...rest}=o||{};return rest;};
+      const vehicles=(await window.api.vehicles.list()).map(strip);
       const allLogs=[],allExpenses=[],allParts=[];
       for(const v of vehicles){
-        (await window.api.maintenance.list(v.id)).forEach(l=>allLogs.push({...l,vehicle_id:v.id}));
-        (await window.api.expenses.list(v.id)).forEach(e=>allExpenses.push({...e,vehicle_id:v.id}));
-        (await window.api.parts.listActive(v.id)).forEach(p=>allParts.push(p));
+        (await window.api.maintenance.list(v.id)).forEach(l=>allLogs.push({...strip(l),vehicle_id:v.id}));
+        (await window.api.expenses.list(v.id)).forEach(e=>allExpenses.push({...strip(e),vehicle_id:v.id}));
+        (await window.api.parts.listActive(v.id)).forEach(p=>allParts.push(strip(p)));
       }
       const data={vehicles,logs:allLogs,expenses:allExpenses,parts:allParts,exportedAt:new Date().toISOString()};
+      const json=JSON.stringify(data,null,2);
       const filename=`bakim-takip-yedek-${new Date().toISOString().slice(0,10)}.json`;
-      const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url;a.download=filename;
-      document.body.appendChild(a);a.click();a.remove();
-      URL.revokeObjectURL(url);
-      return {success:true,filePath:filename};
+
+      const cap=window.Capacitor;
+      if(cap&&typeof cap.nativePromise==='function'){
+        try{
+          const res=await cap.nativePromise('Filesystem','writeFile',{
+            path:filename,
+            directory:'DOCUMENTS',
+            data:json,
+            encoding:'utf8',
+            recursive:true,
+          });
+          return {success:true,filePath:(res&&res.uri)||('Documents/'+filename)};
+        }catch(e){
+          // Depolama izni reddedilmiş, disk dolu, eklenti eksik... hepsi buraya düşer ve
+          // kullanıcıya AÇIKÇA gösterilir (app.js exportBackup). Sessiz başarısızlık yok.
+          return {success:false,error:(e&&(e.message||e.errorMessage))||'Dosya yazılamadı.'};
+        }
+      }
+
+      // Tarayıcı (geliştirme) yolu: burada blob indirmesi gerçekten çalışır.
+      try{
+        const blob=new Blob([json],{type:'application/json'});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;a.download=filename;
+        document.body.appendChild(a);a.click();a.remove();
+        URL.revokeObjectURL(url);
+        return {success:true,filePath:filename};
+      }catch(e){
+        return {success:false,error:e.message||'Dosya indirilemedi.'};
+      }
     },
     async import(){
       // Bulut hesabında toplu geri yükleme bu fazın kapsamı dışında bırakıldı: mevcut
@@ -318,6 +413,20 @@ window.api={
     },
   },
 };
+
+// clearIndexedDbPersistence yalnızca örnek sonlandırıldıktan (terminate) sonra çalışır ve
+// sonrasında bu `db` örneği KULLANILAMAZ — çağıranın ardından location.reload() yapması
+// zorunlu, tercih değil.
+async function clearFirestoreCache(){
+  try{
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+  }catch(e){
+    // Uygulamanın başka bir sekmesi açıksa failed-precondition döner. İşlem (çıkış/silme)
+    // zaten gerçekleşti; önbellek temizlenemediyse reload ile devam ediyoruz.
+    console.warn('Firestore önbelleği temizlenemedi:', e);
+  }
+}
 
 window.authApi={
   onAuthStateChanged(cb){return onAuthStateChanged(auth,cb);},
@@ -332,6 +441,74 @@ window.authApi={
     });
     return cred.user;
   },
-  async logout(){return signOut(auth);},
+  // O-3 + D-3: signOut, persistentLocalCache() ile açılan Firestore disk önbelleğini
+  // TEMİZLEMEZ — kullanıcının tüm araçları, kilometreleri, masraf tutarları ve notları
+  // IndexedDB'de şifresiz kalmaya devam eder. Ortak cihazda "çıkış yaptım" diyen kullanıcı
+  // makul olarak verisinin cihazda kalmadığını varsayar.
+  //
+  // clearIndexedDbPersistence yalnızca örnek sonlandırıldıktan (terminate) sonra çalışır ve
+  // sonrasında bu `db` örneği kullanılamaz — bu yüzden location.reload() zorunlu, tercih
+  // değil. reload aynı zamanda app.js'teki warningCount / editing* global'lerini de kökten
+  // sıfırlar (rapor D-3).
+  async logout(){
+    await signOut(auth);
+    await clearFirestoreCache();
+    location.reload();
+  },
+  // Hesap silme sonrası da aynı temizlik gerekir: hesap artık yok ama kullanıcının tüm
+  // araç/masraf verisi hâlâ cihazın IndexedDB'sinde şifresiz duruyor olurdu.
+  async clearLocalCache(){
+    await clearFirestoreCache();
+    location.reload();
+  },
   async resetPassword(email){return sendPasswordResetEmail(auth,email);},
+
+  // Y-2b — "Doğruladım, Devam Et" akışı. reload() Auth sunucusundan güncel kullanıcı
+  // kaydını çeker (emailVerified), getIdToken(true) ise YENİ bir ID token alır. İkincisi
+  // atlanırsa `email_verified` claim'i eski token'da hâlâ false kalır ve firestore.rules
+  // her yazmayı reddeder — kullanıcı "doğruladım ama kaydetmiyor" hatası alır.
+  async refreshVerification(){
+    const u=auth.currentUser;
+    if(!u)return false;
+    await u.reload();
+    await u.getIdToken(true);
+    return auth.currentUser?.emailVerified===true;
+  },
+  async resendVerification(){
+    const u=auth.currentUser;
+    if(!u)throw new Error('Oturum açık değil');
+    return sendEmailVerification(u);
+  },
+
+  // Y-4 — hesap silmeden önce yeniden kimlik doğrulama. Firebase, son girişten uzun süre
+  // geçmişse deleteUser'ı auth/requires-recent-login ile reddeder; bu adım olmadan silme
+  // akışı çalışmaz.
+  async reauthenticate(password){
+    const u=auth.currentUser;
+    if(!u)throw new Error('Oturum açık değil');
+    if(!u.email)throw new Error('Bu hesapta e-posta ile yeniden doğrulama yapılamıyor.');
+    return reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,password));
+  },
+
+  // Y-4 — client-only hesap silme. Cloud Function tabanlı sunucu cascade'i Blaze plan
+  // gerektirdiği için bilinçli olarak istemcide; firestore.rules `users/{userId}` üzerinde
+  // sahibine delete izni veriyor.
+  //
+  // Araçlar (ve altlarındaki expenses/parts) BURADA silinmez — çağıran taraf (app.js
+  // doDeleteAccount) mevcut vehicles.delete() akışını her araç için ayrı çağırır, böylece
+  // alt koleksiyon temizliği tek bir yerde kalır. Bu fonksiyon geriye kalanı bitirir.
+  //
+  // Auth kaydı EN SON silinir: silindikten sonra request.auth.uid kaybolur ve geride kalan
+  // her Firestore dokümanı (rules ownerId eşitliği istiyor) kimse tarafından erişilemez
+  // hâle gelir.
+  async deleteAccount(){
+    const u=auth.currentUser;
+    if(!u)throw new Error('Oturum açık değil');
+    const userId=u.uid;
+    // fcmTokens şu an kullanılmıyor ama ileride dolabilir; kurallar sahibine write veriyor.
+    await deleteAllDocs(collection(db,'users',userId,'fcmTokens'));
+    await deleteDoc(doc(db,'users',userId));
+    await deleteUser(u);
+    return {success:true};
+  },
 };
