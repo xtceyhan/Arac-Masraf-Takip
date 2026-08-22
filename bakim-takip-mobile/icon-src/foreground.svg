@@ -1,4 +1,4 @@
-<!-- "Benim Taşıtım" — Gösterge İbresi ikonu / adaptive icon FOREGROUND katmanı.
+<!-- "Benim Taşıtım" — Hız/Kilometre Saati ikonu / adaptive icon FOREGROUND katmanı.
      Arka plan ayrı katmandır (ic_launcher_background = #185FA5), bu yüzden burada
      yalnızca beyaz çizim var, zemin YOK.
      Çizim www/app.js içindeki logoSvg() ile aynı 48x48 geometridir; buradaki
@@ -6,9 +6,19 @@
      ölçekler: (24,24) merkezli çizim scale(20) ile 512,512'ye taşınır.
      PNG mipmap üretimi bu makinede yapılmadı (Android SDK yok) — kaynak güncel. -->
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <g transform="translate(32,32) scale(20)" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round">
-    <path d="M11 30a13 13 0 0 1 26 0"/>
-    <path d="M24 30 L33 18"/>
+  <g transform="translate(32,32) scale(20)" fill="none" stroke="#ffffff" stroke-linecap="round">
+    <circle cx="24" cy="24" r="14" stroke-width="2.6"/>
+    <g stroke-width="2.2">
+      <line x1="24" y1="8" x2="24" y2="11.5"/>
+      <line x1="24" y1="36.5" x2="24" y2="40"/>
+      <line x1="8" y1="24" x2="11.5" y2="24"/>
+      <line x1="36.5" y1="24" x2="40" y2="24"/>
+      <line x1="13.7" y1="13.7" x2="16.2" y2="16.2"/>
+      <line x1="31.8" y1="31.8" x2="34.3" y2="34.3"/>
+      <line x1="13.7" y1="34.3" x2="16.2" y2="31.8"/>
+      <line x1="31.8" y1="16.2" x2="34.3" y2="13.7"/>
+    </g>
+    <path d="M24 24 L32 15" stroke-width="3.2"/>
   </g>
-  <circle cx="512" cy="512" r="68" fill="#ffffff"/>
+  <circle cx="512" cy="512" r="60" fill="#ffffff"/>
 </svg>
